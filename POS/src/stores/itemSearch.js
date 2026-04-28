@@ -151,6 +151,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 
 	// Sync cancellation token - incremented to cancel any in-flight sync
 	let syncGeneration = 0
+	let loadAllItemsGeneration = 0
 
 	// ========================================================================
 	// SMART CACHE UPDATE HELPERS
@@ -726,6 +727,20 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			return
 		}
 
+		const generation = ++loadAllItemsGeneration
+		const isStaleLoad = () => generation !== loadAllItemsGeneration
+		const abortIfStale = (step) => {
+			if (!isStaleLoad()) {
+				return false
+			}
+			log.info(`Aborting stale loadAllItems request at ${step}`, {
+				profile,
+				generation,
+				currentGeneration: loadAllItemsGeneration,
+			})
+			return true
+		}
+
 		posProfile.value = profile
 		loading.value = true
 
@@ -781,6 +796,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			}) : Promise.resolve(0)
 
 			const stats = await cacheStatsPromise
+			if (abortIfStale("cache stats resolution")) return
 			// Preserve totalServerItems from previous sync (getCacheStats doesn't include it)
 			const prevTotalServerItems = cacheStats.value?.totalServerItems
 			cacheStats.value = {
@@ -814,6 +830,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 						// Load first page from cache for display
 						const limit = itemsPerPage.value
 						const cached = await offlineWorker.searchCachedItems("", limit)
+						if (abortIfStale("offline cache load")) return
 
 						if (cached && cached.length > 0) {
 							replaceAllItems(cached)
@@ -851,6 +868,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 					// Load first page from cache for display
 					const limit = itemsPerPage.value
 					const cached = await offlineWorker.searchCachedItems("", limit)
+					if (abortIfStale("online cache load")) return
 
 					if (cached && cached.length > 0) {
 						replaceAllItems(cached)
@@ -885,6 +903,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			// Large catalogs (>1000): Load first 100, background sync the rest
 			// countPromise was already fired in parallel with cache stats above
 			const totalItemCount = await countPromise
+			if (abortIfStale("item count resolution")) return
 			totalServerItems.value = totalItemCount
 			if (totalItemCount > 0) {
 				log.info(`Total catalog size: ${totalItemCount} items`)
@@ -905,6 +924,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 
 				// Load items from first group only - other groups load on tab click
 				const fetchedItems = await fetchItemsFromGroups(profile, itemGroupFilters, INITIAL_LIMIT)
+				if (abortIfStale("filtered server fetch")) return
 
 				replaceAllItems(fetchedItems)
 				totalItemsLoaded.value = fetchedItems.length
@@ -957,6 +977,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 					limit: unfilteredLimit,
 					show_variants_as_items: getShowVariantsFlag(),
 				}))
+				if (abortIfStale("unfiltered server fetch")) return
 				const list = response?.message || response || []
 
 				if (list.length > 0) {
@@ -998,6 +1019,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			// Fallback to cache
 			try {
 				const cached = await offlineWorker.searchCachedItems("", itemsPerPage.value)
+				if (abortIfStale("fallback cache load")) return
 				replaceAllItems(cached || [])
 				totalItemsLoaded.value = cached?.length || 0
 				currentOffset.value = cached?.length || 0
@@ -1008,6 +1030,9 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 				replaceAllItems([])
 			}
 		} finally {
+			if (isStaleLoad()) {
+				return
+			}
 			loading.value = false
 		}
 	}
