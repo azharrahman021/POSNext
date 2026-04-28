@@ -94,7 +94,28 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 	const loadingMore = ref(false)
 	const searching = ref(false) // Separate loading state for search
 	const posProfile = ref(null)
+	const currentCustomer = ref(null)
 	const cartItems = ref([])
+
+	function getCustomerName() {
+		return currentCustomer.value?.name || currentCustomer.value || null
+	}
+
+	function buildItemQueryParams(extra = {}) {
+		return {
+			pos_profile: posProfile.value,
+			customer: getCustomerName(),
+			...extra,
+		}
+	}
+
+	function buildItemQueryParamsForProfile(profile, extra = {}) {
+		return {
+			pos_profile: profile,
+			customer: getCustomerName(),
+			...extra,
+		}
+	}
 
 	// Sorting state - for user-triggered sorting filters
 	const sortBy = ref(null) // Options: 'name', 'quantity', 'item_group', 'brand', null (no sorting)
@@ -929,14 +950,13 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 				log.debug(`Fetching ${unfilteredLimit} items (no filters, ${isSmallCatalog ? 'small catalog' : 'paginated'})`)
 
 				// Fetch first batch for fast initial render
-				const response = await call("pos_next.api.items.get_items", {
-					pos_profile: profile,
+				const response = await call("pos_next.api.items.get_items", buildItemQueryParamsForProfile(profile, {
 					search_term: "",
 					item_group: null, // No filter - get items from all groups
 					start: 0,
 					limit: unfilteredLimit,
 					show_variants_as_items: getShowVariantsFlag(),
-				})
+				}))
 				const list = response?.message || response || []
 
 				if (list.length > 0) {
@@ -1012,14 +1032,13 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		log.debug(`Fetching first ${effectiveLimit} items from group: ${firstGroup}`)
 
 		try {
-			const response = await call("pos_next.api.items.get_items", {
-				pos_profile: profile,
+			const response = await call("pos_next.api.items.get_items", buildItemQueryParamsForProfile(profile, {
 				search_term: "",
 				item_group: firstGroup, // Server-side filter via DB index
 				start: 0,
 				limit: effectiveLimit,
 				show_variants_as_items: getShowVariantsFlag(),
-			})
+			}))
 			const items = response?.message || response || []
 			log.info(`Fetched ${items.length} items from ${firstGroup}`)
 			return items
@@ -1049,23 +1068,21 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		try {
 			// Use bulk endpoint for multiple groups, or single endpoint for one
 			if (groupsToFetch.length > 1) {
-				const response = await call("pos_next.api.items.get_items_bulk", {
-					pos_profile: profile,
+				const response = await call("pos_next.api.items.get_items_bulk", buildItemQueryParamsForProfile(profile, {
 					item_groups: JSON.stringify(groupsToFetch),
 					start: start,
 					limit: effectiveLimit,
 					show_variants_as_items: getShowVariantsFlag(),
-				})
+				}))
 				return response?.message || response || []
 			} else {
-				const response = await call("pos_next.api.items.get_items", {
-					pos_profile: profile,
+				const response = await call("pos_next.api.items.get_items", buildItemQueryParamsForProfile(profile, {
 					search_term: "",
 					item_group: itemGroup,
 					start: start,
 					limit: effectiveLimit,
 					show_variants_as_items: getShowVariantsFlag(),
-				})
+				}))
 				return response?.message || response || []
 			}
 		} catch (error) {
@@ -1083,15 +1100,14 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		const effectiveLimit = limit || itemsPerPage.value
 
 		try {
-			const response = await call("pos_next.api.items.get_items", {
-				pos_profile: profile,
+			const response = await call("pos_next.api.items.get_items", buildItemQueryParamsForProfile(profile, {
 				search_term: "",
 				item_group: null,
 				brand: brand,
 				start: start,
 				limit: effectiveLimit,
 				show_variants_as_items: getShowVariantsFlag(),
-			})
+			}))
 			return response?.message || response || []
 		} catch (error) {
 			log.error(`Failed to fetch items for brand ${brand}`, error)
@@ -1163,14 +1179,13 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 					pageSize,
 				)
 			} else {
-				const response = await call("pos_next.api.items.get_items", {
-					pos_profile: posProfile.value,
+				const response = await call("pos_next.api.items.get_items", buildItemQueryParams({
 					search_term: "",
 					item_group: null,
 					start: start,
 					limit: pageSize,
 					show_variants_as_items: getShowVariantsFlag(),
-				})
+				}))
 				items = response?.message || response || []
 			}
 
@@ -1261,14 +1276,13 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 				)
 			} else {
 				// "All Items" tab — fetch next batch without group filter
-				const response = await call("pos_next.api.items.get_items", {
-					pos_profile: posProfile.value,
+				const response = await call("pos_next.api.items.get_items", buildItemQueryParams({
 					search_term: "",
 					item_group: null,
 					start: currentOffset.value,
 					limit: itemsPerPage.value,
 					show_variants_as_items: getShowVariantsFlag(),
-				})
+				}))
 				list = response?.message || response || []
 			}
 
@@ -1614,15 +1628,14 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 
 					// Now search server in background for fresh results
 					log.debug(`Searching server for: "${term}"`)
-					const response = await call("pos_next.api.items.get_items", {
-						pos_profile: posProfile.value,
+					const response = await call("pos_next.api.items.get_items", buildItemQueryParams({
 						search_term: term,
 						item_group: selectedItemGroup.value,
 						brand: selectedBrand.value,
 						start: 0,
 						limit: searchLimit, // Dynamically adjusted based on device performance
 						show_variants_as_items: getShowVariantsFlag(),
-					})
+					}))
 					const serverResults = response?.message || response || []
 
 					if (serverResults.length > 0) {
@@ -1689,6 +1702,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			const result = await searchByBarcodeResource.submit({
 				barcode: barcode,
 				pos_profile: posProfile.value,
+				customer: getCustomerName(),
 			})
 
 			const item = result?.message || result
@@ -1871,14 +1885,13 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 					log.info(`Loaded ${items.length} items for group: ${group}`)
 				} else {
 					// "All Items" tab: fetch first page (no group filter)
-					const response = await call("pos_next.api.items.get_items", {
-						pos_profile: posProfile.value,
+					const response = await call("pos_next.api.items.get_items", buildItemQueryParams({
 						search_term: "",
 						item_group: null,
 						start: 0,
 						limit: pageSize,
 						show_variants_as_items: getShowVariantsFlag(),
-					})
+					}))
 					items = response?.message || response || []
 					log.info(`Loaded ${items.length} items for "All Items" tab`)
 				}
@@ -2000,14 +2013,13 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 				items = await fetchItemsForBrand(posProfile.value, brand, 0, pageSize)
 				log.info(`Loaded ${items.length} items for brand: ${brand}`)
 			} else {
-				const response = await call("pos_next.api.items.get_items", {
-					pos_profile: posProfile.value,
+				const response = await call("pos_next.api.items.get_items", buildItemQueryParams({
 					search_term: "",
 					item_group: null,
 					start: 0,
 					limit: pageSize,
 					show_variants_as_items: getShowVariantsFlag(),
-				})
+				}))
 				items = response?.message || response || []
 				log.info(`Loaded ${items.length} items for "All Items" tab`)
 			}
@@ -2040,6 +2052,12 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 	function setCartItems(items) {
 		cartItems.value = items
 		stockStore.reserve(items) // Simple!
+	}
+
+	function setCustomer(customer) {
+		currentCustomer.value = customer
+		serverDataFresh.value = false
+		clearBaseCache()
 	}
 
 	/**
@@ -2162,6 +2180,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		loadingMore,
 		searching,
 		posProfile,
+		currentCustomer,
 		cartItems,
 		hasMore,
 		totalItemsLoaded,
@@ -2194,6 +2213,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		setSelectedItemGroup,
 		setSelectedBrand,
 		setCartItems, // Delegates to stock store for reservations
+		setCustomer,
 		setPosProfile,
 		startBackgroundCacheSync,
 		stopBackgroundCacheSync,

@@ -53,6 +53,22 @@ def get_stock_availability(item_code, warehouse):
 	return flt(result[0].actual_qty) if result and result[0].actual_qty else 0.0
 
 
+def _resolve_customer_price_list(customer, fallback_price_list):
+	"""Resolve selling price list from Customer, fallback to POS Profile list."""
+	if not customer:
+		return fallback_price_list
+
+	customer_name = customer
+	if isinstance(customer, dict):
+		customer_name = customer.get("name") or customer.get("customer")
+
+	if not customer_name:
+		return fallback_price_list
+
+	customer_price_list = frappe.db.get_value("Customer", customer_name, "default_price_list")
+	return customer_price_list or fallback_price_list
+
+
 def get_item_detail(item, doc=None, warehouse=None, price_list=None, company=None):
 	"""
 	Get comprehensive item details including batch/serial data, pricing, and stock information.
@@ -305,7 +321,7 @@ def get_item_detail(item, doc=None, warehouse=None, price_list=None, company=Non
 
 
 @frappe.whitelist()
-def search_by_barcode(barcode, pos_profile):
+def search_by_barcode(barcode, pos_profile, customer=None):
 	"""Search item by barcode"""
 	try:
 		# Parse pos_profile if it's a JSON string
@@ -348,14 +364,15 @@ def search_by_barcode(barcode, pos_profile):
 
 		# Get POS Profile details
 		pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
+		active_price_list = _resolve_customer_price_list(customer, pos_profile_doc.selling_price_list)
 
 		# Validate POS Profile has required fields
 		if not pos_profile_doc.warehouse:
 			frappe.throw(_("Warehouse not set in POS Profile {0}").format(pos_profile))
-		if not pos_profile_doc.selling_price_list:
-			frappe.throw(_("Selling Price List not set in POS Profile {0}").format(pos_profile))
 		if not pos_profile_doc.company:
 			frappe.throw(_("Company not set in POS Profile {0}").format(pos_profile))
+		if not active_price_list:
+			frappe.throw(_("No Selling Price List found for selected customer or POS Profile {0}").format(pos_profile))
 
 		# Get item doc
 		item_doc = frappe.get_cached_doc("Item", item_code)
@@ -381,7 +398,7 @@ def search_by_barcode(barcode, pos_profile):
 		item_details = get_item_detail(
 			item=json.dumps(item),
 			warehouse=pos_profile_doc.warehouse,
-			price_list=pos_profile_doc.selling_price_list,
+			price_list=active_price_list,
 			company=pos_profile_doc.company,
 		)
 
@@ -390,13 +407,13 @@ def search_by_barcode(barcode, pos_profile):
 
 		# Build uom_prices map (same pattern as get_items)
 		uom_prices = {}
-		if pos_profile_doc.selling_price_list:
+		if active_price_list:
 			ItemPrice = DocType("Item Price")
 			prices = (
 				frappe.qb.from_(ItemPrice)
 				.select(ItemPrice.uom, ItemPrice.price_list_rate)
 				.where(ItemPrice.item_code == item_code)
-				.where(ItemPrice.price_list == pos_profile_doc.selling_price_list)
+				.where(ItemPrice.price_list == active_price_list)
 				.run(as_dict=True)
 			)
 			for p in prices:
@@ -1126,7 +1143,7 @@ def _get_bundle_warehouse_availability_bulk(bundle_codes, warehouses):
 
 
 @frappe.whitelist()
-def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20, include_variants=0, show_variants_as_items=0, brand=None):
+def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20, include_variants=0, show_variants_as_items=0, brand=None, customer=None):
 	"""Get items for POS with stock, price, and tax details.
 
 	Filter behaviour:
@@ -1143,6 +1160,7 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20,
 
 	try:
 		pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
+		active_price_list = _resolve_customer_price_list(customer, pos_profile_doc.selling_price_list)
 
 		# Try to resolve weighted/priced barcodes if barcode_resolver is available
 		resolved_barcode_data = None
@@ -1269,7 +1287,7 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20,
 					ItemPrice.price_list_rate
 				)
 				.where(ItemPrice.item_code.isin(item_codes))
-				.where(ItemPrice.price_list == pos_profile_doc.selling_price_list)
+				.where(ItemPrice.price_list == active_price_list)
 				.orderby(ItemPrice.item_code)
 				.orderby(ItemPrice.uom)
 				.run(as_dict=True)
@@ -1370,7 +1388,7 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20,
 					.inner_join(Item).on(Item.name == ItemPrice.item_code)
 					.select(fn.Min(ItemPrice.price_list_rate).as_("min_price"))
 					.where(Item.variant_of == item["item_code"])
-					.where(ItemPrice.price_list == pos_profile_doc.selling_price_list)
+					.where(ItemPrice.price_list == active_price_list)
 					.where(Item.disabled == 0)
 					.run(as_dict=True)
 				)
@@ -1496,7 +1514,7 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20,
 
 
 @frappe.whitelist()
-def get_items_bulk(pos_profile, item_groups=None, start=0, limit=2000, include_variants=0, show_variants_as_items=0):
+def get_items_bulk(pos_profile, item_groups=None, start=0, limit=2000, include_variants=0, show_variants_as_items=0, customer=None):
 	"""
 	Fetch items from multiple item groups in a SINGLE query.
 	Eliminates N+1 problem where frontend was making one API call per group.
@@ -1583,7 +1601,7 @@ def get_items_bulk(pos_profile, item_groups=None, start=0, limit=2000, include_v
 					conversion_map[row.parent][row.uom] = row.conversion_factor
 
 		# Prices
-		price_list = pos_profile_doc.selling_price_list
+		price_list = _resolve_customer_price_list(customer, pos_profile_doc.selling_price_list)
 		if price_list and item_codes:
 			ItemPrice = DocType("Item Price")
 			prices = (
@@ -1732,7 +1750,7 @@ def get_items_count(pos_profile, item_group=None, brand=None, include_variants=0
 
 
 @frappe.whitelist()
-def get_item_details(item_code, pos_profile, customer=None, qty=1, uom=None):  # noqa: ARG001 - customer reserved for future use
+def get_item_details(item_code, pos_profile, customer=None, qty=1, uom=None):
 	"""Get detailed item info including price, tax, stock"""
 	try:
 		# Parse pos_profile if it's a JSON string
@@ -1770,10 +1788,12 @@ def get_item_details(item_code, pos_profile, customer=None, qty=1, uom=None):  #
 		if uom:
 			item["uom"] = uom
 
+		active_price_list = _resolve_customer_price_list(customer, pos_profile_doc.selling_price_list)
+
 		return get_item_detail(
 			item=json.dumps(item),
 			warehouse=pos_profile_doc.warehouse,
-			price_list=pos_profile_doc.selling_price_list,
+			price_list=active_price_list,
 			company=pos_profile_doc.company,
 		)
 	except Exception as e:

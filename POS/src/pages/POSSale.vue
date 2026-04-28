@@ -1115,6 +1115,7 @@ const offerReapplyTimer = ref(null);
 
 // Performance: Cache previous cart state to avoid unnecessary reapplications
 let previousCartHash = "";
+let customerPricingGeneration = 0;
 
 // Tracks the in-flight edit of a queued offline invoice. Set by
 // handleEditOfflineInvoice, consumed by the offline branch of
@@ -1529,12 +1530,20 @@ watch(
 // Watch for customer changes - customer affects which offers are applicable
 watch(
 	() => cartStore.customer,
-	(newCustomer, oldCustomer) => {
+	async (newCustomer, oldCustomer) => {
 		const newCustomerName = newCustomer?.name || newCustomer;
 		const oldCustomerName = oldCustomer?.name || oldCustomer;
 
 		// Only reapply if customer actually changed
 		if (newCustomerName !== oldCustomerName) {
+			const generation = ++customerPricingGeneration;
+			itemStore.setCustomer(newCustomer);
+			await itemStore.loadAllItems(shiftStore.profileName, true);
+			if (generation !== customerPricingGeneration) return;
+
+			await cartStore.refreshCartItemPricesForCustomer(newCustomerName);
+			if (generation !== customerPricingGeneration) return;
+
 			// Clear existing timer
 			if (offerReapplyTimer.value) {
 				clearTimeout(offerReapplyTimer.value);

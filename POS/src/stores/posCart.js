@@ -282,6 +282,41 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		customer.value = selectedCustomer
 	}
 
+	async function refreshCartItemPricesForCustomer(customerName = null) {
+		if (offlineState.isOffline || invoiceItems.value.length === 0) return
+
+		const effectiveCustomer = customerName ?? customer.value?.name ?? customer.value ?? null
+
+		for (const item of invoiceItems.value) {
+			// Abort stale repricing if customer changed while processing
+			const latestCustomer = customer.value?.name || customer.value || null
+			if ((effectiveCustomer || null) !== (latestCustomer || null)) break
+
+			if (item.is_free_item || item.is_rate_manually_edited) continue
+
+			try {
+				const itemDetails = await getItemDetailsResource.submit({
+					item_code: item.item_code,
+					pos_profile: posProfile.value,
+					customer: effectiveCustomer,
+					qty: item.quantity,
+					uom: item.uom,
+				})
+
+				const nextPriceListRate = Number(itemDetails?.price_list_rate ?? itemDetails?.rate ?? 0)
+				if (nextPriceListRate > 0) {
+					item.price_list_rate = nextPriceListRate
+					item.rate = nextPriceListRate
+					recalculateItem(item)
+				}
+			} catch (error) {
+				console.error(`Failed to refresh price for ${item.item_code}:`, error)
+			}
+		}
+
+		rebuildIncrementalCache()
+	}
+
 	function setPendingItem(item, qty = 1, mode = "uom") {
 		pendingItem.value = item
 		pendingItemQty.value = qty
@@ -1737,6 +1772,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		reapplyOffer,
 		changeItemUOM,
 		updateItemDetails,
+		refreshCartItemPricesForCustomer,
 		getItemDetailsResource,
 		resolveUomPricing,
 		recalculateItem,
