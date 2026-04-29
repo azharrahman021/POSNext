@@ -2367,6 +2367,8 @@ function addCreditAccountPayment() {
 		is_credit_sale: true, // Mark as credit sale
 		paid_amount: 0,
 		outstanding_amount: props.grandTotal,
+		sales_team:
+			selectedSalesPersons.value.length > 0 ? selectedSalesPersons.value : null,
 	}
 
 	log.debug(
