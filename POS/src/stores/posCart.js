@@ -282,6 +282,63 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		customer.value = selectedCustomer
 	}
 
+	async function refreshCartPricingForCustomer() {
+		if (!posProfile.value || invoiceItems.value.length === 0 || offlineState.isOffline) {
+			return { updated: 0, failed: 0 }
+		}
+
+		let updated = 0
+		let failed = 0
+		const customerName = customer.value?.name || customer.value || null
+
+		for (const item of invoiceItems.value) {
+			if (!item?.item_code || item.is_free_item) {
+				continue
+			}
+
+			try {
+				const details = await getItemDetailsResource.submit({
+					item_code: item.item_code,
+					pos_profile: posProfile.value,
+					customer: customerName,
+					qty: item.quantity || item.qty || 1,
+					uom: item.uom,
+				})
+				const nextPriceListRate = Number.parseFloat(
+					details?.price_list_rate ?? details?.rate ?? 0,
+				)
+
+				if (!Number.isFinite(nextPriceListRate) || nextPriceListRate < 0) {
+					continue
+				}
+
+				item.price_list_rate = nextPriceListRate
+				item.uom_prices = details?.uom_prices || item.uom_prices
+				item.item_uoms = details?.item_uoms || item.item_uoms
+				item.item_group = details?.item_group || item.item_group
+				item.brand = details?.brand || item.brand
+
+				if (item.is_rate_manually_edited !== 1) {
+					item.rate = nextPriceListRate
+				}
+
+				recalculateItem(item)
+				updated++
+			} catch (error) {
+				failed++
+				console.error(`Failed to refresh price for ${item.item_code}:`, error)
+			}
+		}
+
+		rebuildIncrementalCache()
+
+		if (failed > 0) {
+			showWarning(__("Some cart item prices could not be refreshed. Please review the cart."))
+		}
+
+		return { updated, failed }
+	}
+
 	function setPendingItem(item, qty = 1, mode = "uom") {
 		pendingItem.value = item
 		pendingItemQty.value = qty
@@ -1724,6 +1781,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		updateItemQuantity,
 		clearCart,
 		setCustomer,
+		refreshCartPricingForCustomer,
 		setDefaultCustomer,
 		setPendingItem,
 		clearPendingItem,

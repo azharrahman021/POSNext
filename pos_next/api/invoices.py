@@ -752,6 +752,14 @@ def update_invoice(data):
         invoice_doc.ignore_pricing_rule = 1
         invoice_doc.flags.ignore_pricing_rule = True
 
+        if pos_profile_doc and invoice_doc.meta.has_field("selling_price_list"):
+            from pos_next.api.items import get_effective_selling_price_list
+
+            invoice_doc.selling_price_list = get_effective_selling_price_list(
+                pos_profile_doc,
+                invoice_doc.get("customer"),
+            )
+
         # ========================================================================
         # OPTIMIZATION: Cache POS Settings to avoid repeated DB queries
         # Fetch all needed settings in a single query at the start
@@ -2798,6 +2806,8 @@ def apply_offers(invoice_data, selected_offers=None):
         if not customer_group:
             customer_group = "All Customer Groups"
 
+        from pos_next.api.items import get_effective_selling_price_list
+
         pricing_args = frappe._dict(
             {
                 "doctype": invoice.get("doctype") or "Sales Invoice",
@@ -2813,7 +2823,7 @@ def apply_offers(invoice_data, selected_offers=None):
                 "plc_conversion_rate": flt(invoice.get("plc_conversion_rate") or 1)
                 or 1,
                 "price_list": invoice.get("price_list")
-                or profile.get("selling_price_list"),
+                or get_effective_selling_price_list(profile, customer),
                 "customer": customer,
                 "customer_group": customer_group,
                 "territory": territory,

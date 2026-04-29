@@ -595,6 +595,7 @@
 				:item="cartStore.pendingItem"
 				:mode="cartStore.selectionMode"
 				:pos-profile="shiftStore.profileName"
+				:customer="cartStore.customer"
 				:currency="shiftStore.profileCurrency"
 				@option-selected="handleOptionSelected"
 			/>
@@ -1516,12 +1517,15 @@ watch(
 // Watch for customer changes - customer affects which offers are applicable
 watch(
 	() => cartStore.customer,
-	(newCustomer, oldCustomer) => {
+	async (newCustomer, oldCustomer) => {
 		const newCustomerName = newCustomer?.name || newCustomer;
 		const oldCustomerName = oldCustomer?.name || oldCustomer;
 
 		// Only reapply if customer actually changed
 		if (newCustomerName !== oldCustomerName) {
+			await itemStore.setCustomer(newCustomer);
+			await cartStore.refreshCartPricingForCustomer();
+
 			// Clear existing timer
 			if (offerReapplyTimer.value) {
 				clearTimeout(offerReapplyTimer.value);

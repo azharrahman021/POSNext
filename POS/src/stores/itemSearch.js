@@ -94,6 +94,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 	const loadingMore = ref(false)
 	const searching = ref(false) // Separate loading state for search
 	const posProfile = ref(null)
+	const activeCustomer = ref(null)
 	const cartItems = ref([])
 
 	// Sorting state - for user-triggered sorting filters
@@ -130,6 +131,10 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 
 	// Sync cancellation token - incremented to cancel any in-flight sync
 	let syncGeneration = 0
+
+	function getActiveCustomerName() {
+		return activeCustomer.value?.name || activeCustomer.value || null
+	}
 
 	// ========================================================================
 	// SMART CACHE UPDATE HELPERS
@@ -931,6 +936,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 				// Fetch first batch for fast initial render
 				const response = await call("pos_next.api.items.get_items", {
 					pos_profile: profile,
+					customer: getActiveCustomerName(),
 					search_term: "",
 					item_group: null, // No filter - get items from all groups
 					start: 0,
@@ -1014,6 +1020,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		try {
 			const response = await call("pos_next.api.items.get_items", {
 				pos_profile: profile,
+				customer: getActiveCustomerName(),
 				search_term: "",
 				item_group: firstGroup, // Server-side filter via DB index
 				start: 0,
@@ -1051,6 +1058,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			if (groupsToFetch.length > 1) {
 				const response = await call("pos_next.api.items.get_items_bulk", {
 					pos_profile: profile,
+					customer: getActiveCustomerName(),
 					item_groups: JSON.stringify(groupsToFetch),
 					start: start,
 					limit: effectiveLimit,
@@ -1060,6 +1068,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			} else {
 				const response = await call("pos_next.api.items.get_items", {
 					pos_profile: profile,
+					customer: getActiveCustomerName(),
 					search_term: "",
 					item_group: itemGroup,
 					start: start,
@@ -1085,6 +1094,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		try {
 			const response = await call("pos_next.api.items.get_items", {
 				pos_profile: profile,
+				customer: getActiveCustomerName(),
 				search_term: "",
 				item_group: null,
 				brand: brand,
@@ -1165,6 +1175,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			} else {
 				const response = await call("pos_next.api.items.get_items", {
 					pos_profile: posProfile.value,
+					customer: getActiveCustomerName(),
 					search_term: "",
 					item_group: null,
 					start: start,
@@ -1263,6 +1274,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 				// "All Items" tab — fetch next batch without group filter
 				const response = await call("pos_next.api.items.get_items", {
 					pos_profile: posProfile.value,
+					customer: getActiveCustomerName(),
 					search_term: "",
 					item_group: null,
 					start: currentOffset.value,
@@ -1406,6 +1418,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 
 						const response = await call("pos_next.api.items.get_items_bulk", {
 							pos_profile: profile,
+							customer: getActiveCustomerName(),
 							item_groups: JSON.stringify([currentGroup]),
 							start: groupOffset,
 							limit: batchSize,
@@ -1457,6 +1470,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 							promises.push(
 								call("pos_next.api.items.get_items_bulk", {
 									pos_profile: profile,
+									customer: getActiveCustomerName(),
 									start: offset,
 									limit: batchSize,
 									show_variants_as_items: getShowVariantsFlag(),
@@ -1616,6 +1630,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 					log.debug(`Searching server for: "${term}"`)
 					const response = await call("pos_next.api.items.get_items", {
 						pos_profile: posProfile.value,
+						customer: getActiveCustomerName(),
 						search_term: term,
 						item_group: selectedItemGroup.value,
 						brand: selectedBrand.value,
@@ -1689,6 +1704,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			const result = await searchByBarcodeResource.submit({
 				barcode: barcode,
 				pos_profile: posProfile.value,
+				customer: getActiveCustomerName(),
 			})
 
 			const item = result?.message || result
@@ -1873,6 +1889,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 					// "All Items" tab: fetch first page (no group filter)
 					const response = await call("pos_next.api.items.get_items", {
 						pos_profile: posProfile.value,
+						customer: getActiveCustomerName(),
 						search_term: "",
 						item_group: null,
 						start: 0,
@@ -2002,6 +2019,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			} else {
 				const response = await call("pos_next.api.items.get_items", {
 					pos_profile: posProfile.value,
+					customer: getActiveCustomerName(),
 					search_term: "",
 					item_group: null,
 					start: 0,
@@ -2040,6 +2058,23 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 	function setCartItems(items) {
 		cartItems.value = items
 		stockStore.reserve(items) // Simple!
+	}
+
+	async function setCustomer(customer, reloadItems = true) {
+		const currentCustomerName = getActiveCustomerName()
+		const nextCustomerName = customer?.name || customer || null
+
+		if (currentCustomerName === nextCustomerName) {
+			return
+		}
+
+		activeCustomer.value = customer || null
+		serverDataFresh.value = false
+		clearBaseCache()
+
+		if (reloadItems && posProfile.value && !isOffline()) {
+			await loadAllItems(posProfile.value, true)
+		}
 	}
 
 	/**
@@ -2162,6 +2197,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		loadingMore,
 		searching,
 		posProfile,
+		activeCustomer,
 		cartItems,
 		hasMore,
 		totalItemsLoaded,
@@ -2194,6 +2230,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		setSelectedItemGroup,
 		setSelectedBrand,
 		setCartItems, // Delegates to stock store for reservations
+		setCustomer,
 		setPosProfile,
 		startBackgroundCacheSync,
 		stopBackgroundCacheSync,

@@ -1240,6 +1240,7 @@
 			v-model="showEditDialog"
 			:item="selectedItem"
 			:warehouses="warehouses"
+			:customer="customer"
 			:currency="currency"
 			@update-item="handleUpdateItem"
 		/>

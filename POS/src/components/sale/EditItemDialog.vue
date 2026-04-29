@@ -302,6 +302,7 @@ const props = defineProps({
 		type: Array,
 		default: () => [],
 	},
+	customer: [String, Object],
 	currency: {
 		type: String,
 		default: "EGP",
@@ -546,6 +547,7 @@ async function getRateForUom(uom) {
 			const itemDetails = await getItemDetailsResource.submit({
 				item_code: localItem.value.item_code,
 				pos_profile: posProfile,
+				customer: props.customer?.name || props.customer,
 				qty: localQuantity.value || 1,
 				uom,
 			})

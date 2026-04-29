@@ -250,6 +250,7 @@ const props = defineProps({
 		default: "uom",
 	},
 	posProfile: String,
+	customer: [String, Object],
 	currency: {
 		type: String,
 		default: DEFAULT_CURRENCY,
@@ -406,6 +407,7 @@ const variantsResource = createResource({
 		return {
 			template_item: props.item?.item_code,
 			pos_profile: props.posProfile,
+			customer: props.customer?.name || props.customer,
 		}
 	},
 	auto: false,
