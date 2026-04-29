@@ -10,6 +10,7 @@ from frappe import _
 from frappe.utils import flt, cint, nowdate, nowtime, get_datetime, cstr
 from erpnext.stock.doctype.batch.batch import get_batch_qty, get_batch_no
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_bank_cash_account
+from pos_next.api.credit_sales import check_credit_sale_enabled
 
 
 # ==========================================
@@ -25,6 +26,18 @@ FIELD_ALLOW_USER_TO_EDIT_RATE = "allow_user_to_edit_rate"
 FIELD_MAX_DISCOUNT_ALLOWED = "max_discount_allowed"
 FIELD_DISABLE_ROUNDED_TOTAL = "disable_rounded_total"
 FIELD_ALLOW_NEGATIVE_STOCK = "allow_negative_stock"
+
+
+def _mark_credit_sale_if_allowed(invoice_doc, pos_profile, is_credit_sale):
+    """Allow POS Pay on Account only when the POS profile permits credit sale."""
+    if not is_credit_sale:
+        return
+
+    if not pos_profile or not check_credit_sale_enabled(pos_profile):
+        frappe.throw(_("Credit Sale is not enabled for this POS Profile"))
+
+    if cint(invoice_doc.get("is_pos")) and not invoice_doc.get("payments"):
+        invoice_doc.flags.pos_next_credit_sale = 1
 
 # Doctypes
 DOCTYPE_SALES_INVOICE = "Sales Invoice"
@@ -857,6 +870,12 @@ def update_invoice(data):
             if pos_profile_doc and pos_profile_doc.warehouse:
                 invoice_doc.set_warehouse = pos_profile_doc.warehouse
 
+        _mark_credit_sale_if_allowed(
+            invoice_doc,
+            pos_profile,
+            cint(data.get("is_credit_sale") or invoice_doc.get("is_credit_sale")),
+        )
+
         # ========================================================================
         # ROUNDING CONFIGURATION
         # ========================================================================
@@ -1386,6 +1405,12 @@ def submit_invoice(invoice=None, data=None):
         redeemed_customer_credit = data.get("redeemed_customer_credit") or invoice.get("redeemed_customer_credit")
         if redeemed_customer_credit and not invoice_doc.payments:
             invoice_doc.flags.pos_next_redeemed_customer_credit = flt(redeemed_customer_credit)
+
+        _mark_credit_sale_if_allowed(
+            invoice_doc,
+            pos_profile,
+            cint(data.get("is_credit_sale") or invoice.get("is_credit_sale")),
+        )
 
         # Save before submit
         invoice_doc.flags.ignore_permissions = True

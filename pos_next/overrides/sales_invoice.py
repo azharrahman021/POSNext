@@ -142,6 +142,10 @@ class CustomSalesInvoice(SalesInvoice):
 			if len(self.payments) == 0 and cint(self.is_pos) and flt(self.grand_total) > 0:
 				return
 
+		if getattr(self.flags, "pos_next_credit_sale", 0):
+			if len(self.payments) == 0 and cint(self.is_pos) and flt(self.grand_total) > 0:
+				return
+
 		super().validate_pos_paid_amount()
 
 	def get_party_and_party_type_for_pos_gl_entry(self, mode_of_payment, account):

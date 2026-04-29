@@ -932,6 +932,7 @@ export function useInvoice() {
 		targetDoctype = "Sales Invoice",
 		deliveryDate = null,
 		writeOffAmount = 0,
+		isCreditSale = false,
 	) {
 		/**
 		 * Two-step submission process with mutex protection:
@@ -981,6 +982,7 @@ export function useInvoice() {
 					coupon_code: couponCode.value,
 					is_pos: 1,
 					update_stock: 1, // Critical: Ensures stock is updated
+					is_credit_sale: isCreditSale ? 1 : 0,
 				}
 
 				if (targetDoctype === "Sales Order" && deliveryDate) {
@@ -1018,6 +1020,7 @@ export function useInvoice() {
 					change_amount:
 						remainingAmount.value < 0 ? Math.abs(remainingAmount.value) : 0,
 					write_off_amount: writeOffAmount || 0,
+					is_credit_sale: isCreditSale ? 1 : 0,
 				}
 
 				if (redeemedCustomerCredit > 0 && customerCreditDict.length > 0) {

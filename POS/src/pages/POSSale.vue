@@ -2024,6 +2024,8 @@ async function handlePaymentCompleted(paymentData) {
 			cartStore.setWriteOffAmount(paymentData.write_off_amount);
 		}
 
+		cartStore.setCreditSale(Boolean(paymentData.is_credit_sale));
+
 		// Delete draft if it exists (since we're submitting/saving invoice)
 		const draftIdToDelete = cartStore.currentDraftId;
 
@@ -2044,6 +2046,7 @@ async function handlePaymentCompleted(paymentData) {
 				total_tax: cartStore.totalTax,
 				total_discount: cartStore.totalDiscount,
 				write_off_amount: paymentData.write_off_amount || 0,
+				is_credit_sale: paymentData.is_credit_sale ? 1 : 0,
 			};
 
 			await offlineStore.saveInvoiceOffline(invoiceData);

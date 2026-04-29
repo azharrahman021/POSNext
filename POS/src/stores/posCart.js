@@ -229,6 +229,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		appliedCoupon.value = null
 		currentDraftId.value = null
 		targetDoctype.value = "Sales Invoice"
+		isCreditSale.value = false
 
 		// Reset offer processing state
 		offerProcessingState.value.lastCartHash = ''
@@ -245,6 +246,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 
 	const deliveryDate = ref("")
 	const writeOffAmount = ref(0)
+	const isCreditSale = ref(false)
 
 	function setDeliveryDate(date) {
 		deliveryDate.value = date
@@ -252,6 +254,10 @@ export const usePOSCartStore = defineStore("posCart", () => {
 
 	function setWriteOffAmount(amount) {
 		writeOffAmount.value = amount || 0
+	}
+
+	function setCreditSale(value) {
+		isCreditSale.value = Boolean(value)
 	}
 
 	async function submitInvoice() {
@@ -264,10 +270,16 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			return
 		}
 
-		const result = await baseSubmitInvoice(targetDoctype.value, deliveryDate.value, writeOffAmount.value)
+		const result = await baseSubmitInvoice(
+			targetDoctype.value,
+			deliveryDate.value,
+			writeOffAmount.value,
+			isCreditSale.value,
+		)
 		// Reset write-off amount after successful submission
 		if (result) {
 			writeOffAmount.value = 0
+			isCreditSale.value = false
 		}
 		return result
 	}
@@ -1813,6 +1825,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		// Write-off feature
 		writeOffAmount,
 		setWriteOffAmount,
+		isCreditSale,
+		setCreditSale,
 
 		// Utilities
 		cancelPendingOfferProcessing: () => {
