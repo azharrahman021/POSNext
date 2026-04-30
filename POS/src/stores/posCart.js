@@ -6,6 +6,7 @@ import { parseError } from "@/utils/errorHandler"
 import {
 	shouldValidateItemStock,
 	checkStockAvailability,
+	getStockQuantity,
 } from "@/utils/stockValidator"
 import { offlineState } from "@/utils/offline/offlineState"
 import { useToast } from "@/composables/useToast"
@@ -173,6 +174,28 @@ export const usePOSCartStore = defineStore("posCart", () => {
 	const hasCustomer = computed(() => !!customer.value)
 
 	// Actions
+	function getRequestedStockQtyForItem(itemCode, nextItem = null, nextQty = 0) {
+		let requestedStockQty = 0
+
+		for (const cartItem of invoiceItems.value) {
+			if (cartItem.item_code !== itemCode) continue
+			if (
+				nextItem &&
+				cartItem.item_code === nextItem.item_code &&
+				(cartItem.uom || cartItem.stock_uom) === (nextItem.uom || nextItem.stock_uom)
+			) {
+				continue
+			}
+			requestedStockQty += getStockQuantity(cartItem.quantity, cartItem)
+		}
+
+		if (nextItem) {
+			requestedStockQty += getStockQuantity(nextQty, nextItem)
+		}
+
+		return requestedStockQty
+	}
+
 	function addItem(item, qty = 1, _autoAdd = false, currentProfile = null) {
 		if (currentProfile && settingsStore.shouldEnforceStockValidation() && shouldValidateItemStock(item)) {
 			// Account for quantity already in the cart for this item
@@ -181,9 +204,13 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				(i) => i.item_code === item.item_code && i.uom === itemUom,
 			)
 			const totalQty = (existing ? existing.quantity : 0) + qty
+			const requestedStockQty = getRequestedStockQtyForItem(item.item_code, item, totalQty)
 			const warehouse = item.warehouse || currentProfile.warehouse
 
-			const check = checkStockAvailability(item, totalQty, warehouse)
+			const check = checkStockAvailability(item, requestedStockQty, warehouse, {
+				quantityInStockUom: true,
+				displayQty: totalQty,
+			})
 			if (!check.available) {
 				throw new Error(check.error)
 			}
@@ -208,7 +235,11 @@ export const usePOSCartStore = defineStore("posCart", () => {
 
 		// Only validate when quantity is increasing
 		if (newQty > item.quantity && settingsStore.shouldEnforceStockValidation() && shouldValidateItemStock(item)) {
-			const check = checkStockAvailability(item, newQty)
+			const requestedStockQty = getRequestedStockQtyForItem(item.item_code, item, newQty)
+			const check = checkStockAvailability(item, requestedStockQty, null, {
+				quantityInStockUom: true,
+				displayQty: newQty,
+			})
 			if (!check.available) {
 				showWarning(check.error)
 				return
@@ -1323,7 +1354,15 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			// Validate stock if quantity is being increased
 			if (updates.quantity !== undefined && updates.quantity > cartItem.quantity
 				&& settingsStore.shouldEnforceStockValidation() && shouldValidateItemStock(cartItem)) {
-				const check = checkStockAvailability(cartItem, updates.quantity)
+				const requestedStockQty = getRequestedStockQtyForItem(
+					cartItem.item_code,
+					cartItem,
+					updates.quantity,
+				)
+				const check = checkStockAvailability(cartItem, requestedStockQty, null, {
+					quantityInStockUom: true,
+					displayQty: updates.quantity,
+				})
 				if (!check.available) {
 					throw new Error(check.error)
 				}

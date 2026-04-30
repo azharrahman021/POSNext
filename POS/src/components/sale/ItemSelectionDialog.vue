@@ -241,6 +241,7 @@ import { computed, nextTick, ref, watch } from "vue"
 import TranslatedHTML from "../common/TranslatedHTML.vue"
 import { offlineState } from "@/utils/offline/offlineState"
 import { getCachedVariants, cacheItems } from "@/utils/offline/items"
+import { getStockQuantity } from "@/utils/stockValidator"
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -295,7 +296,8 @@ const stockWarning = computed(() => {
 	const availableStock = selectedOption.value.stock_qty ?? selectedOption.value.actual_qty ?? null
 	if (availableStock === null) return null
 
-	if (quantity.value > availableStock) {
+	const requestedStockQty = getStockQuantity(quantity.value, selectedOption.value)
+	if (requestedStockQty > availableStock) {
 		return __("Requested quantity ({0}) exceeds available stock ({1})", [quantity.value, Math.floor(availableStock)])
 	}
 	return null
@@ -512,6 +514,9 @@ function buildUomOptions() {
 		description: __("Stock unit"),
 		rate: getUomPrice(props.item.stock_uom, 1),
 		priceLabel: __('per {0}', [props.item.stock_uom]),
+		actual_qty: props.item.actual_qty,
+		stock_qty: props.item.stock_qty,
+		stock_uom: props.item.stock_uom,
 	})
 
 	// Additional UOMs
@@ -525,6 +530,9 @@ function buildUomOptions() {
 				description: __('1 {0} = {1} {2}', [uomData.uom, uomData.conversion_factor, props.item.stock_uom]),
 				rate: getUomPrice(uomData.uom, uomData.conversion_factor),
 				priceLabel: __('per {0}', [uomData.uom]),
+				actual_qty: props.item.actual_qty,
+				stock_qty: props.item.stock_qty,
+				stock_uom: props.item.stock_uom,
 			})
 		})
 	}

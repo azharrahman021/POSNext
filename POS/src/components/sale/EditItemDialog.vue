@@ -285,7 +285,7 @@
 import { useToast } from "@/composables/useToast"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { useSerialNumberStore } from "@/stores/serialNumber"
-import { getItemStock } from "@/utils/stockValidator"
+import { getItemStock, getStockQuantity } from "@/utils/stockValidator"
 import { formatCurrency as formatCurrencyUtil, getCurrencySymbol, roundCurrency } from "@/utils/currency"
 import { Button, FeatherIcon, createResource } from "frappe-ui"
 import { computed, ref, watch } from "vue"
@@ -612,7 +612,7 @@ async function handleWarehouseChange() {
 				__('"{0}" is not available in warehouse "{1}". Please select another warehouse.',
 				[localItem.value.item_name, localWarehouse.value])
 			)
-		} else if (availableStock < localQuantity.value) {
+		} else if (availableStock < getStockQuantity(localQuantity.value, localItem.value)) {
 			hasStock.value = false
 			showWarning(
 				__('Only {0} units of "{1}" available in "{2}". Current quantity: {3}', [

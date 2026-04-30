@@ -30,25 +30,52 @@ export function shouldValidateItemStock(item) {
 }
 
 /**
+ * Convert a sales quantity to the item's stock UOM quantity.
+ *
+ * @param {number} quantity - Quantity in the selected sales UOM
+ * @param {Object} item - Item with conversion_factor from selected UOM to stock UOM
+ * @returns {number} Quantity expressed in stock UOM
+ */
+export function getStockQuantity(quantity, item = {}) {
+	const qty = Number.parseFloat(quantity) || 0
+	const conversionFactor = Number.parseFloat(item.conversion_factor) || 1
+	return qty * conversionFactor
+}
+
+/**
  * Check if the requested quantity exceeds available stock.
  *
  * @param {Object}  item       - Item with actual_qty / stock_qty
  * @param {number}  requestedQty - Total quantity to validate against
  * @param {string}  [warehouse]  - Warehouse name (for error message)
+ * @param {Object}  [options]    - Optional comparison flags
+ * @param {boolean} [options.quantityInStockUom=false] - requestedQty is already in stock UOM
+ * @param {number}  [options.displayQty=requestedQty] - Original user-entered quantity for message
  * @returns {{ available: boolean, actualQty: number, error: string|null }}
  */
-export function checkStockAvailability(item, requestedQty, warehouse) {
-	const actualQty = item.actual_qty ?? item.stock_qty ?? 0
+export function checkStockAvailability(item, requestedQty, warehouse, options = {}) {
+	const actualQty = Number.parseFloat(item.actual_qty ?? item.stock_qty ?? 0) || 0
+	const requestedStockQty = options.quantityInStockUom
+		? Number.parseFloat(requestedQty) || 0
+		: getStockQuantity(requestedQty, item)
+	const displayQty = options.displayQty ?? requestedQty
 	const wh = warehouse || item.warehouse || ''
 
-	if (actualQty >= requestedQty) {
+	if (actualQty >= requestedStockQty) {
 		return { available: true, actualQty, error: null }
 	}
 
 	return {
 		available: false,
 		actualQty,
-		error: formatStockError(item.item_name, requestedQty, actualQty, wh),
+		error: formatStockError(
+			item.item_name,
+			displayQty,
+			actualQty,
+			wh,
+			requestedStockQty,
+			item.stock_uom,
+		),
 	}
 }
 
@@ -82,14 +109,26 @@ export async function getItemStock(itemCode, warehouse) {
  * @param {number} requested - Requested quantity
  * @param {number} available - Available quantity
  * @param {string} warehouse - Warehouse name
+ * @param {number|null} requestedStockQty - Requested quantity converted to stock UOM
+ * @param {string|null} stockUom - Item stock UOM
  * @returns {string} - Formatted error message
  */
-export function formatStockError(itemName, requested, available, warehouse) {
+export function formatStockError(
+	itemName,
+	requested,
+	available,
+	warehouse,
+	requestedStockQty = null,
+	stockUom = null,
+) {
 	if (available <= 0) {
 		return `"${itemName}" is out of stock in warehouse "${warehouse}".`
 	}
 
 	const unit = requested === 1 ? "unit" : "units"
 	const availableUnit = available === 1 ? "unit" : "units"
-	return `Not enough stock for "${itemName}".\n\nYou requested ${requested} ${unit}, but only ${available} ${availableUnit} available in "${warehouse}".`
+	const convertedMessage = requestedStockQty !== null && stockUom
+		? ` (${requestedStockQty} ${stockUom})`
+		: ""
+	return `Not enough stock for "${itemName}".\n\nYou requested ${requested} ${unit}${convertedMessage}, but only ${available} ${availableUnit} available in "${warehouse}".`
 }
