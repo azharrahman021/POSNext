@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.1] - 2026-04-30
+
+### Fixed
+- Reload POS item prices and existing cart rows from the selected customer's default selling price list, with POS Profile price list fallback.
+- Allow Pay on Account credit-sale invoices to submit without payment rows when credit sales are enabled.
+- Preserve selected sales team details on Pay on Account invoices.
+
 ## [1.16.0] - 2026-04-01
 
 ### Added
