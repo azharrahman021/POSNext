@@ -765,6 +765,27 @@ def update_invoice(data):
         invoice_doc.ignore_pricing_rule = 1
         invoice_doc.flags.ignore_pricing_rule = True
 
+        if doctype == "Sales Invoice" and invoice_doc.get("is_return") and invoice_doc.get("return_against"):
+            original_currency_fields = frappe.db.get_value(
+                "Sales Invoice",
+                invoice_doc.return_against,
+                ["company", "currency", "conversion_rate", "plc_conversion_rate"],
+                as_dict=True,
+            )
+            if original_currency_fields:
+                invoice_doc.company = invoice_doc.company or original_currency_fields.company
+                invoice_doc.currency = invoice_doc.currency or original_currency_fields.currency
+                invoice_doc.conversion_rate = flt(
+                    invoice_doc.conversion_rate
+                    or original_currency_fields.conversion_rate
+                    or 1
+                ) or 1
+                invoice_doc.plc_conversion_rate = flt(
+                    invoice_doc.plc_conversion_rate
+                    or original_currency_fields.plc_conversion_rate
+                    or 1
+                ) or 1
+
         if pos_profile_doc and invoice_doc.meta.has_field("selling_price_list"):
             from pos_next.api.items import get_effective_selling_price_list
 
@@ -2263,6 +2284,10 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
             si.outstanding_amount,
             si.customer,
             si.customer_name,
+            si.company,
+            si.currency,
+            si.conversion_rate,
+            si.plc_conversion_rate,
             si.net_total,
             si.total_taxes_and_charges
         )
@@ -2313,6 +2338,12 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
     # Ensure POS flags are set
     return_doc.is_pos = invoice_info.is_pos
     return_doc.pos_profile = invoice_info.pos_profile
+    return_doc.company = return_doc.company or invoice_info.company
+    return_doc.currency = return_doc.currency or invoice_info.currency
+    return_doc.conversion_rate = flt(return_doc.conversion_rate or invoice_info.conversion_rate or 1) or 1
+    return_doc.plc_conversion_rate = flt(
+        return_doc.plc_conversion_rate or invoice_info.plc_conversion_rate or 1
+    ) or 1
 
     # Aggregate quantities already returned from previous return invoices
     ret_si = frappe.qb.DocType("Sales Invoice")
@@ -2381,6 +2412,10 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
         "outstanding_amount": invoice_info.outstanding_amount,
         "customer": invoice_info.customer,
         "customer_name": invoice_info.customer_name,
+        "company": invoice_info.company,
+        "currency": invoice_info.currency,
+        "conversion_rate": invoice_info.conversion_rate,
+        "plc_conversion_rate": invoice_info.plc_conversion_rate,
         "posting_date": invoice_info.posting_date,
         "payments": payments_data,
         "net_total": invoice_info.net_total,

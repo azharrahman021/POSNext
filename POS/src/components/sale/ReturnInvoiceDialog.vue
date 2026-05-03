@@ -952,6 +952,11 @@ const fetchInvoiceResource = createResource({
 				customer: data.customer,
 				customer_name: origInvoice.customer_name || data.customer_name,
 				company: data.company,
+				currency: data.currency || origInvoice.currency,
+				conversion_rate:
+					data.conversion_rate || origInvoice.conversion_rate || 1,
+				plc_conversion_rate:
+					data.plc_conversion_rate || origInvoice.plc_conversion_rate || 1,
 				posting_date: origInvoice.posting_date,
 				grand_total: origInvoice.grand_total,
 				paid_amount: origInvoice.paid_amount,
@@ -1036,6 +1041,13 @@ const createReturnResource = createResource({
 			posa_pos_opening_shift: props.posOpeningShift,
 			customer: baseDoc.customer || originalInvoice.value.customer,
 			company: baseDoc.company || originalInvoice.value.company,
+			currency: baseDoc.currency || originalInvoice.value.currency,
+			conversion_rate:
+				baseDoc.conversion_rate || originalInvoice.value.conversion_rate || 1,
+			plc_conversion_rate:
+				baseDoc.plc_conversion_rate ||
+				originalInvoice.value.plc_conversion_rate ||
+				1,
 			is_return: 1,
 			return_against: baseDoc.return_against || originalInvoice.value.name,
 			// Setting to 0 ensures GL entries point to original invoice,
