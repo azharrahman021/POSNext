@@ -769,12 +769,13 @@ def update_invoice(data):
             original_currency_fields = frappe.db.get_value(
                 "Sales Invoice",
                 invoice_doc.return_against,
-                ["company", "currency", "conversion_rate", "plc_conversion_rate"],
+                ["company", "currency", "conversion_rate", "plc_conversion_rate", "debit_to"],
                 as_dict=True,
             )
             if original_currency_fields:
                 invoice_doc.company = invoice_doc.company or original_currency_fields.company
                 invoice_doc.currency = invoice_doc.currency or original_currency_fields.currency
+                invoice_doc.debit_to = invoice_doc.debit_to or original_currency_fields.debit_to
                 invoice_doc.conversion_rate = flt(
                     invoice_doc.conversion_rate
                     or original_currency_fields.conversion_rate
@@ -785,6 +786,35 @@ def update_invoice(data):
                     or original_currency_fields.plc_conversion_rate
                     or 1
                 ) or 1
+
+            original_item_names = [
+                item.get("sales_invoice_item")
+                for item in invoice_doc.get("items", [])
+                if item.get("sales_invoice_item")
+            ]
+            original_item_map = {}
+            if original_item_names:
+                original_items = frappe.get_all(
+                    "Sales Invoice Item",
+                    filters={"name": ["in", original_item_names]},
+                    fields=[
+                        "name",
+                        "income_account",
+                        "expense_account",
+                        "cost_center",
+                        "item_tax_template",
+                    ],
+                )
+                original_item_map = {item.name: item for item in original_items}
+
+            for item in invoice_doc.get("items", []):
+                original_item = original_item_map.get(item.get("sales_invoice_item"))
+                if not original_item:
+                    continue
+                item.income_account = item.income_account or original_item.income_account
+                item.expense_account = item.expense_account or original_item.expense_account
+                item.cost_center = item.cost_center or original_item.cost_center
+                item.item_tax_template = item.item_tax_template or original_item.item_tax_template
 
         if pos_profile_doc and invoice_doc.meta.has_field("selling_price_list"):
             from pos_next.api.items import get_effective_selling_price_list

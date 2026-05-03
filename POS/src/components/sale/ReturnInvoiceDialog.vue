@@ -952,6 +952,7 @@ const fetchInvoiceResource = createResource({
 				customer: data.customer,
 				customer_name: origInvoice.customer_name || data.customer_name,
 				company: data.company,
+				debit_to: data.debit_to || origInvoice.debit_to,
 				currency: data.currency || origInvoice.currency,
 				conversion_rate:
 					data.conversion_rate || origInvoice.conversion_rate || 1,
@@ -1041,6 +1042,7 @@ const createReturnResource = createResource({
 			posa_pos_opening_shift: props.posOpeningShift,
 			customer: baseDoc.customer || originalInvoice.value.customer,
 			company: baseDoc.company || originalInvoice.value.company,
+			debit_to: baseDoc.debit_to || originalInvoice.value.debit_to,
 			currency: baseDoc.currency || originalInvoice.value.currency,
 			conversion_rate:
 				baseDoc.conversion_rate || originalInvoice.value.conversion_rate || 1,
@@ -1071,6 +1073,10 @@ const createReturnResource = createResource({
 				warehouse: item.warehouse,
 				uom: item.uom,
 				conversion_factor: item.conversion_factor || 1,
+				income_account: item.income_account,
+				expense_account: item.expense_account,
+				cost_center: item.cost_center,
+				item_tax_template: item.item_tax_template,
 				// Link to original invoice item row for accurate return tracking in ERPNext
 				sales_invoice_item: item.name,
 			})),
