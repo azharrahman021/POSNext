@@ -1648,15 +1648,23 @@ def get_invoices(pos_profile, limit=100):
 
 
 @frappe.whitelist()
-def get_draft_invoices(pos_opening_shift, doctype="Sales Invoice"):
-    """Get all draft invoices for a POS opening shift."""
+def get_draft_invoices(pos_opening_shift=None, pos_profile=None, doctype="Sales Invoice"):
+    """Get POS draft invoices for the current shift/profile."""
     filters = {
         "docstatus": 0,
     }
 
-    # Add pos_opening_shift filter if the field exists
-    if frappe.db.has_column(doctype, "pos_opening_shift"):
+    meta = frappe.get_meta(doctype)
+
+    if meta.has_field("is_pos"):
+        filters["is_pos"] = 1
+
+    if pos_opening_shift and meta.has_field("posa_pos_opening_shift"):
+        filters["posa_pos_opening_shift"] = pos_opening_shift
+    elif pos_opening_shift and meta.has_field("pos_opening_shift"):
         filters["pos_opening_shift"] = pos_opening_shift
+    elif pos_profile and meta.has_field("pos_profile"):
+        filters["pos_profile"] = pos_profile
 
     # Performance: Get all invoice names first
     invoices_list = frappe.get_list(
@@ -1687,6 +1695,13 @@ def delete_invoice(invoice):
     # Check if it's a draft
     if frappe.db.get_value(doctype, invoice, "docstatus") != 0:
         frappe.throw(_("Cannot delete submitted invoice {0}").format(invoice))
+
+    invoice_doc = frappe.get_doc(doctype, invoice)
+    pos_profile = invoice_doc.get("pos_profile")
+    if pos_profile and not frappe.get_value("POS Profile", pos_profile, "posa_allow_delete"):
+        frappe.throw(
+            _("Deleting draft invoices is disabled for POS Profile {0}").format(pos_profile)
+        )
 
     frappe.delete_doc(doctype, invoice, force=1)
     return _("Invoice {0} Deleted").format(invoice)

@@ -29,7 +29,7 @@
             </div>
 
             <!-- Key Metrics Grid -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-2 md:gap-4">
               <!-- Gross Sales (before returns) -->
               <div class="text-start bg-blue-50 border border-blue-200 rounded-lg p-3 md:p-4">
                 <div class="text-blue-600 text-xs uppercase font-medium mb-1">{{ __('Gross Sales') }}</div>
@@ -56,6 +56,13 @@
                 <div class="text-gray-600 text-xs uppercase font-medium mb-1">{{ __('Tax Collected') }}</div>
                 <div class="text-lg md:text-2xl font-bold text-gray-900 mb-0.5 md:mb-1 truncate">{{ formatCurrency(totalTax) }}</div>
                 <div class="text-gray-600 text-xs">{{ __('Net tax') }}</div>
+              </div>
+
+              <!-- Open Drafts (not included in sales totals) -->
+              <div v-if="openDraftCount > 0" class="text-start bg-amber-50 border border-amber-200 rounded-lg p-3 md:p-4">
+                <div class="text-amber-700 text-xs uppercase font-medium mb-1">{{ __('Open Drafts') }}</div>
+                <div class="text-lg md:text-2xl font-bold text-amber-900 mb-0.5 md:mb-1 truncate">{{ formatCurrency(openDraftTotal) }}</div>
+                <div class="text-amber-700 text-xs">{{ __('{0} draft(s), not in sales', [openDraftCount]) }}</div>
               </div>
             </div>
           </div>
@@ -478,7 +485,7 @@
         <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 order-1 sm:order-2">
           <!-- Validation Warning (only in entry mode) -->
           <div v-if="!canSubmit && closingData && !showSuccessReport" class="text-xs md:text-sm text-yellow-600 font-medium text-center sm:text-end">
-            {{ __('Please enter all closing amounts') }}
+            {{ submitBlockMessage }}
           </div>
 
           <!-- Success message (shown in report view) -->
@@ -636,6 +643,8 @@ const canSubmit = computed(() => {
 	if (!closingData.value || !closingData.value.payment_reconciliation)
 		return false
 
+	if (openDraftCount.value > 0) return false
+
 	// Check if all closing amounts have been manually entered
 	return closingData.value.payment_reconciliation.every(
 		(payment) =>
@@ -648,6 +657,13 @@ const canSubmit = computed(() => {
 
 async function submitClosing() {
 	if (!closingData.value) return
+	if (openDraftCount.value > 0) {
+		errorMessage.value = __(
+			"Cannot close shift while {0} draft invoice(s) remain open.",
+			[openDraftCount.value],
+		)
+		return
+	}
 
 	try {
 		errorMessage.value = '' // Clear any previous errors
@@ -744,6 +760,28 @@ const grossSales = computed(() => {
 	if (!closingData.value) return 0
 	return closingData.value.sales_total ?? closingData.value.grand_total ?? 0
 })
+
+const openDraftCount = computed(() => {
+	if (!closingData.value) return 0
+	return Number.parseInt(closingData.value.draft_count || 0, 10)
+})
+
+const openDraftTotal = computed(() => {
+	if (!closingData.value) return 0
+	return Number.parseFloat(closingData.value.draft_total || 0)
+})
+
+const submitBlockMessage = computed(() => {
+	if (openDraftCount.value > 0) {
+		return __(
+			"Resolve {0} open draft invoice(s) before closing this shift",
+			[openDraftCount.value],
+		)
+	}
+
+	return __("Please enter all closing amounts")
+})
+
 const getTotalExpected = computed(() => {
 	if (!closingData.value || !closingData.value.payment_reconciliation) return 0
 	return closingData.value.payment_reconciliation.reduce(

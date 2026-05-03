@@ -49,6 +49,7 @@
 									</svg>
 								</button>
 								<button
+									v-if="allowDeleteDrafts && !draft.server_backed"
 									@click.stop="handleDeleteDraft(draft.draft_id)"
 									class="text-gray-400 hover:text-red-600 transition-colors p-1"
 									:title="__('Delete draft')"
@@ -95,7 +96,7 @@
 		<template #actions>
 			<div class="flex justify-between items-center w-full">
 				<Button
-					v-if="drafts.length > 0"
+					v-if="allowDeleteDrafts && localDraftsCount > 0"
 					variant="subtle"
 					theme="red"
 					@click="showClearAllDialog = true"
@@ -141,7 +142,7 @@
 		<template #body-content>
 			<div class="py-3">
 				<p class="text-sm text-gray-600">
-					{{ __('Permanently delete all {0} draft invoices?', [drafts.length]) }}
+					{{ __('Permanently delete all {0} local draft invoices?', [localDraftsCount]) }}
 				</p>
 			</div>
 		</template>
@@ -165,15 +166,17 @@ import {
 	formatCurrency as formatCurrencyUtil,
 	roundCurrency,
 } from "@/utils/currency"
-import { clearAllDrafts, deleteDraft, getAllDrafts } from "@/utils/draftManager"
-import { printInvoiceCustom } from "@/utils/printInvoice"
+import { clearAllDrafts } from "@/utils/draftManager"
+import { printInvoiceByName, printInvoiceCustom } from "@/utils/printInvoice"
 import { useToast } from "@/composables/useToast"
+import { usePOSDraftsStore } from "@/stores/posDrafts"
 import { usePOSShiftStore } from "@/stores/posShift"
 import { Button, Dialog } from "frappe-ui"
-import { onMounted, ref, watch } from "vue"
+import { computed, onMounted, ref, watch } from "vue"
 
 const { showSuccess, showError } = useToast()
 const shiftStore = usePOSShiftStore()
+const draftsStore = usePOSDraftsStore()
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -194,6 +197,12 @@ const drafts = ref([])
 const showDeleteDialog = ref(false)
 const showClearAllDialog = ref(false)
 const draftToDelete = ref(null)
+const localDraftsCount = computed(
+	() => drafts.value.filter((draft) => !draft.server_backed).length,
+)
+const allowDeleteDrafts = computed(
+	() => Boolean(shiftStore.currentProfile?.posa_allow_delete),
+)
 
 watch(
 	() => props.modelValue,
@@ -215,19 +224,25 @@ onMounted(() => {
 
 async function loadDrafts() {
 	try {
-		drafts.value = await getAllDrafts()
+		await draftsStore.loadDrafts()
+		drafts.value = draftsStore.drafts
 	} catch (error) {
 		console.error("Error loading drafts:", error)
 		showError(__("Failed to load draft invoices"))
 	}
 }
 
-function handlePrintDraft(draft) {
+async function handlePrintDraft(draft) {
 	if (!props.allowPrintDraftInvoices) {
 		return
 	}
 
 	try {
+		if (draft.server_backed && draft.erp_invoice_name) {
+			await printInvoiceByName(draft.erp_invoice_name)
+			return
+		}
+
 		const invoiceData = {
 			name: draft.draft_id,
 			company: shiftStore.profileCompany,
@@ -250,13 +265,18 @@ function handlePrintDraft(draft) {
 }
 
 function handleDeleteDraft(draftId) {
+	if (!allowDeleteDrafts.value) {
+		showError(__("Deleting draft invoices is disabled for this POS Profile"))
+		return
+	}
+
 	draftToDelete.value = draftId
 	showDeleteDialog.value = true
 }
 
 async function confirmDeleteDraft() {
 	try {
-		await deleteDraft(draftToDelete.value)
+		await draftsStore.deleteDraft(draftToDelete.value)
 		await loadDrafts()
 		showDeleteDialog.value = false
 		draftToDelete.value = null
@@ -273,6 +293,11 @@ async function confirmDeleteDraft() {
 
 async function confirmClearAll() {
 	try {
+		if (!allowDeleteDrafts.value) {
+			showError(__("Deleting draft invoices is disabled for this POS Profile"))
+			return
+		}
+
 		await clearAllDrafts()
 		await loadDrafts()
 		showClearAllDialog.value = false
@@ -280,7 +305,7 @@ async function confirmClearAll() {
 		// Notify parent to update count
 		emit("drafts-updated")
 
-		showSuccess(__("All draft invoices deleted"))
+		showSuccess(__("All local draft invoices deleted"))
 	} catch (error) {
 		console.error("Error clearing drafts:", error)
 		showError(__("Failed to clear drafts"))

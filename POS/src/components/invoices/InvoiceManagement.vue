@@ -436,6 +436,7 @@
 												<p class="text-xs text-gray-400 mt-0.5">{{ formatDateTime(draft.created_at) }}</p>
 											</div>
 											<button
+												v-if="allowDeleteDrafts && !draft.server_backed"
 												@click.stop="$emit('delete-draft', draft.draft_id)"
 												class="text-gray-400 hover:text-red-600 transition-colors p-1"
 												:title="__('Delete draft')"
@@ -594,6 +595,10 @@ const props = defineProps({
 	draftInvoices: {
 		type: Array,
 		default: () => [],
+	},
+	allowDeleteDrafts: {
+		type: Boolean,
+		default: false,
 	},
 })
 

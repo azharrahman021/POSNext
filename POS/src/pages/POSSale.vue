@@ -665,6 +665,7 @@
 				:currency="shiftStore.profileCurrency"
 				:history-invoices="invoiceHistoryData"
 				:draft-invoices="draftsStore.drafts"
+				:allow-delete-drafts="allowDeleteDrafts"
 				@view-invoice="handleViewInvoice"
 				@print-invoice="handlePrintInvoice"
 				@load-draft="handleLoadDraftFromManagement"
@@ -1137,6 +1138,9 @@ const showInvoiceManagement = ref(false);
 // Invoice Detail dialog
 const showInvoiceDetail = ref(false);
 const selectedInvoiceForView = ref(null);
+const allowDeleteDrafts = computed(() =>
+	Boolean(shiftStore.currentProfile?.posa_allow_delete)
+);
 
 // Invoice history data (used by InvoiceManagement component)
 const invoiceHistoryData = ref([]);
@@ -2060,8 +2064,8 @@ async function handlePaymentCompleted(paymentData) {
 			// Reset cart hash after successful payment
 			previousCartHash = "";
 
-			// Delete draft after successful save
-			if (draftIdToDelete) {
+			// Local offline drafts can be removed after queueing the sale.
+			if (draftIdToDelete && String(draftIdToDelete).startsWith("DRAFT-")) {
 				draftsStore.deleteDraft(draftIdToDelete);
 			}
 
@@ -2082,8 +2086,9 @@ async function handlePaymentCompleted(paymentData) {
 				// Reset cart hash after successful payment
 				previousCartHash = "";
 
-				// Delete draft after successful submission
-				if (draftIdToDelete) {
+				// ERPNext-backed drafts are updated and submitted in-place.
+				// Only legacy local draft records need explicit deletion.
+				if (draftIdToDelete && String(draftIdToDelete).startsWith("DRAFT-")) {
 					draftsStore.deleteDraft(draftIdToDelete);
 				}
 
@@ -2286,14 +2291,23 @@ function logoutWithCloseShift() {
 }
 
 async function handleSaveDraft() {
-	const savedDraft = await draftsStore.saveDraftInvoice(
-		cartStore.invoiceItems,
-		cartStore.customer,
-		cartStore.posProfile,
-		cartStore.appliedOffers,
-		cartStore.currentDraftId
-	);
+	const previousDraftId = cartStore.currentDraftId;
+	const savedDraft = offlineStore.isOffline
+		? await draftsStore.saveDraftInvoice(
+			cartStore.invoiceItems,
+			cartStore.customer,
+			cartStore.posProfile,
+			cartStore.appliedOffers,
+			cartStore.currentDraftId
+		)
+		: await cartStore.saveDraftInvoice();
 	if (savedDraft) {
+		if (!offlineStore.isOffline) {
+			if (previousDraftId && String(previousDraftId).startsWith("DRAFT-")) {
+				await draftsStore.deleteDraft(previousDraftId);
+			}
+			await draftsStore.loadDrafts();
+		}
 		cartStore.clearCart();
 		// Reset cart hash when cart is saved as draft and cleared
 		previousCartHash = "";
@@ -2304,13 +2318,15 @@ async function handleLoadDraft(draft) {
 	try {
 		// If current cart has items, save it as draft before loading new one
 		if (!cartStore.isEmpty) {
-			const saved = await draftsStore.saveDraftInvoice(
-				cartStore.invoiceItems,
-				cartStore.customer,
-				cartStore.posProfile,
-				cartStore.appliedOffers,
-				cartStore.currentDraftId
-			);
+			const saved = offlineStore.isOffline
+				? await draftsStore.saveDraftInvoice(
+					cartStore.invoiceItems,
+					cartStore.customer,
+					cartStore.posProfile,
+					cartStore.appliedOffers,
+					cartStore.currentDraftId
+				)
+				: await cartStore.saveDraftInvoice();
 
 			if (!saved) {
 				showError(
@@ -2326,7 +2342,7 @@ async function handleLoadDraft(draft) {
 		const draftData = await draftsStore.loadDraft(draft);
 		cartStore.invoiceItems = draftData.items;
 		cartStore.setCustomer(draftData.customer);
-		cartStore.currentDraftId = draft.draft_id; // Set current draft ID
+		cartStore.currentDraftId = draft.erp_invoice_name || draft.draft_id; // Set current draft ID
 
 		// Rebuild incremental cache to recalculate totals
 		cartStore.rebuildIncrementalCache();
@@ -2821,6 +2837,15 @@ function handleLoadDraftFromManagement(draft) {
 }
 
 function handleDeleteDraft(draftId) {
+	if (!allowDeleteDrafts.value) {
+		showWarning(__("Deleting draft invoices is disabled for this POS Profile"));
+		return;
+	}
+
+	if (draftId && !String(draftId).startsWith("DRAFT-")) {
+		showWarning(__("ERPNext draft invoices must be managed from ERPNext"));
+		return;
+	}
 	draftsStore.deleteDraft(draftId);
 }
 

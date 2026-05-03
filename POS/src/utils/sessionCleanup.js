@@ -1,4 +1,3 @@
-import { clearAllDrafts } from "@/utils/draftManager"
 import { usePOSCartStore } from "@/stores/posCart"
 import { usePOSUIStore } from "@/stores/posUI"
 import { useSessionLock } from "@/composables/useSessionLock"
@@ -56,10 +55,7 @@ export async function cleanupUserSession() {
 		_receivedAt: 0,
 	}
 
-	// 4. Clear draft invoices from IndexedDB
-	try {
-		await clearAllDrafts()
-	} catch (error) {
-		console.error("Failed to clear draft invoices:", error)
-	}
+	// Draft invoices are intentionally preserved. Online drafts are ERPNext
+	// Sales Invoice drafts; offline local drafts may be the only recoverable
+	// copy until the terminal reconnects.
 }

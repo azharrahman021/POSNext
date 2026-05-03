@@ -65,6 +65,14 @@ class POSClosingShift(Document):
                 _("Selected POS Opening Shift should be open."),
                 title=_("Invalid Opening Entry"),
             )
+        draft_summary = get_open_draft_summary(self.pos_opening_shift)
+        if draft_summary["draft_count"]:
+            frappe.throw(
+                _(
+                    "Cannot close shift while {0} draft invoice(s) remain open for this shift."
+                ).format(int(draft_summary["draft_count"])),
+                title=_("Open Draft Invoices"),
+            )
         self.update_payment_reconciliation()
 
     def update_payment_reconciliation(self):
@@ -78,7 +86,6 @@ class POSClosingShift(Document):
         opening_entry = frappe.get_doc("POS Opening Shift", self.pos_opening_shift)
         opening_entry.pos_closing_shift = self.name
         opening_entry.set_status()
-        self.delete_draft_invoices()
         opening_entry.save()
         # link invoices with this closing shift so ERPNext can block edits
         self._set_closing_entry_invoices()
@@ -386,6 +393,29 @@ def get_pos_invoices(pos_opening_shift, doctype=None):
     return data
 
 
+def get_open_draft_summary(pos_opening_shift, doctype="Sales Invoice"):
+    """Return non-posting draft totals for visibility during shift close."""
+    rows = frappe.db.sql(
+        f"""
+	select
+		count(name) as draft_count,
+		coalesce(sum(base_grand_total), 0) as draft_total
+	from
+		`tab{doctype}`
+	where
+		docstatus = 0 and is_pos = 1 and posa_pos_opening_shift = %s
+	""",
+        (pos_opening_shift),
+        as_dict=1,
+    )
+
+    row = rows[0] if rows else {}
+    return {
+        "draft_count": int(row.get("draft_count") or 0),
+        "draft_total": flt(row.get("draft_total") or 0),
+    }
+
+
 @frappe.whitelist()
 def get_payments_entries(pos_opening_shift):
     return frappe.get_all(
@@ -570,6 +600,8 @@ def make_closing_shift_from_opening(opening_shift):
         txn = _process_invoice(invoice, invoice_field, company_currency, cash_mode, payments, taxes, summary)
         pos_transactions.append(txn)
 
+    draft_summary = get_open_draft_summary(opening_shift.get("name"), doctype)
+
     # Process payment entries
     pos_payments_table = []
     for py in get_payments_entries(opening_shift.get("name")):
@@ -604,6 +636,8 @@ def make_closing_shift_from_opening(opening_shift):
         "returns_count": summary["returns_count"],
         "sales_total": summary["sales_total"],
         "sales_count": summary["sales_count"],
+        "draft_count": draft_summary["draft_count"],
+        "draft_total": draft_summary["draft_total"],
         "pos_transactions": pos_transactions,  # Include return info for display
     })
 

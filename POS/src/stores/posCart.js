@@ -99,6 +99,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		removeItem,
 		updateItemQuantity: baseUpdateItemQuantity,
 		submitInvoice: baseSubmitInvoice,
+		saveDraft: baseSaveDraft,
 		clearCart: clearInvoiceCart,
 		loadTaxRules,
 		setTaxInclusive,
@@ -306,12 +307,40 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			deliveryDate.value,
 			writeOffAmount.value,
 			isCreditSale.value,
+			currentDraftId.value && !String(currentDraftId.value).startsWith("DRAFT-")
+				? currentDraftId.value
+				: null,
 		)
 		// Reset write-off amount after successful submission
 		if (result) {
 			writeOffAmount.value = 0
 			isCreditSale.value = false
+			currentDraftId.value = null
 		}
+		return result
+	}
+
+	async function saveDraftInvoice() {
+		if (invoiceItems.value.length === 0) {
+			showWarning(__("Cannot save an empty cart as draft"))
+			return null
+		}
+		if (!customer.value) {
+			showWarning(__("Please select a customer"))
+			return null
+		}
+
+		const result = await baseSaveDraft(
+			targetDoctype.value,
+			currentDraftId.value && !String(currentDraftId.value).startsWith("DRAFT-")
+				? currentDraftId.value
+				: null,
+		)
+
+		if (result?.name) {
+			currentDraftId.value = result.name
+		}
+
 		return result
 	}
 
@@ -1839,6 +1868,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		loadTaxRules,
 		setTaxInclusive,
 		submitInvoice,
+		saveDraftInvoice,
 		applyDiscountToCart,
 		removeDiscountFromCart,
 		applyOffer,

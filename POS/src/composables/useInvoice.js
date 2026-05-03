@@ -161,11 +161,6 @@ export function useInvoice() {
 		auto: false,
 	})
 
-	const cleanupDraftsResource = createResource({
-		url: "pos_next.api.invoices.cleanup_old_drafts",
-		auto: false,
-	})
-
 	// ========================================================================
 	// COMPUTED TOTALS - IMPORTANT: Subtotal uses price_list_rate (original price)
 	// ========================================================================
@@ -895,7 +890,7 @@ export function useInvoice() {
 		}
 	}
 
-	async function saveDraft(targetDoctype = "Sales Invoice") {
+	async function saveDraft(targetDoctype = "Sales Invoice", draftName = null) {
 		/**
 		 * Save invoice as draft (Step 1)
 		 * This creates the invoice with docstatus=0
@@ -907,6 +902,7 @@ export function useInvoice() {
 
 		const invoiceData = {
 			doctype: targetDoctype,
+			name: draftName || undefined,
 			pos_profile: posProfile.value,
 			posa_pos_opening_shift: posOpeningShift.value,
 			customer: customer.value?.name || customer.value,
@@ -933,6 +929,7 @@ export function useInvoice() {
 		deliveryDate = null,
 		writeOffAmount = 0,
 		isCreditSale = false,
+		draftName = null,
 	) {
 		/**
 		 * Two-step submission process with mutex protection:
@@ -973,6 +970,7 @@ export function useInvoice() {
 
 				const invoiceData = {
 					doctype: targetDoctype,
+					name: draftName || undefined,
 					pos_profile: posProfile.value,
 					posa_pos_opening_shift: posOpeningShift.value,
 					customer: customer.value?.name || customer.value,
@@ -1183,19 +1181,8 @@ export function useInvoice() {
 		// Set default customer from POS Profile if available
 		setDefaultCustomer()
 
-		// Cleanup old draft invoices (older than 1 hour) in background
-		// Skip if offline to avoid network errors
-		if (!isOffline()) {
-			try {
-				await cleanupDraftsResource.submit({
-					pos_profile: posProfile.value,
-					max_age_hours: 1,
-				})
-			} catch (error) {
-				// Silent fail - don't block cart clearing
-				console.warn("Failed to cleanup old drafts:", error)
-			}
-		}
+		// ERPNext-backed POS drafts are real Sales Invoice drafts and should
+		// remain auditable until explicitly submitted or deleted by an allowed user.
 	}
 
 	async function loadTaxRules(profileName, posSettings = null) {
