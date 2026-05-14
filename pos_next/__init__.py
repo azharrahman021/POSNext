@@ -6,7 +6,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - frappe may not be installed during setup
     frappe = None
 
-__version__ = "1.16.2"
+__version__ = "1.16.3"
 
 
 def console(*data):
@@ -53,5 +53,14 @@ try:
     from pos_next.overrides.rounding_compat import patch_round_floats_in_compat
 
     patch_round_floats_in_compat(document_module)
+except Exception:
+    pass
+
+# Optional invoice_manager compatibility: prevent older notification hooks from
+# breaking POS return submission when they log date values or miss profit helpers.
+try:
+    from pos_next.overrides.invoice_manager_compat import patch_invoice_manager_notification
+
+    patch_invoice_manager_notification()
 except Exception:
     pass

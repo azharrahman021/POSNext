@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.3] - 2026-05-15
+
+### Fixed
+- Prevent disabled or deleted items from remaining visible in POS item lists and offline cache.
+- Block disabled items from being added through barcode lookup or direct item detail fetches.
+- Broadcast item update events so connected POS terminals evict disabled items without waiting for a manual cache clear.
+- Prevent POS return invoice submission failures caused by older `invoice_manager` notification hooks missing `calculate_profit`.
+- Make `invoice_manager` calculation error logging date-safe so return submissions are not converted into internal server errors.
+
 ## [1.16.2] - 2026-05-15
 
 ### Added

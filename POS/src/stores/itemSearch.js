@@ -128,12 +128,21 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 
 	// Real-time POS Profile update handler
 	let posProfileUpdateCleanup = null
+	let itemUpdateCleanup = null
 
 	// Sync cancellation token - incremented to cancel any in-flight sync
 	let syncGeneration = 0
 
 	function getActiveCustomerName() {
 		return activeCustomer.value?.name || activeCustomer.value || null
+	}
+
+	function isDisabledItem(item) {
+		return item?.disabled === 1 || item?.disabled === true || item?.disabled === "1"
+	}
+
+	function onlyEnabledItems(items) {
+		return Array.isArray(items) ? items.filter((item) => item?.item_code && !isDisabledItem(item)) : []
 	}
 
 	// ========================================================================
@@ -414,7 +423,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 	}
 
 	function replaceAllItems(items) {
-		const next = Array.isArray(items) ? items : []
+		const next = onlyEnabledItems(items)
 		removeRegisteredItems(registeredAllItems)
 		allItems.value = next
 		allItemsVersion.value += 1
@@ -423,15 +432,16 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 	}
 
 	function appendAllItems(items) {
-		if (!Array.isArray(items) || items.length === 0) return
-		allItems.value.push(...items)
+		const next = onlyEnabledItems(items)
+		if (next.length === 0) return
+		allItems.value.push(...next)
 		allItemsVersion.value += 1
-		registerItems(items, registeredAllItems) // Initializes stock in stock store
+		registerItems(next, registeredAllItems) // Initializes stock in stock store
 		clearBaseCache()
 	}
 
 	function setSearchResults(items) {
-		const next = Array.isArray(items) ? items : []
+		const next = onlyEnabledItems(items)
 		removeRegisteredItems(registeredSearchItems)
 		searchResults.value = next
 		searchResultsVersion.value += 1
@@ -1799,6 +1809,59 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			posProfileUpdateCleanup()
 			posProfileUpdateCleanup = null
 		}
+		if (itemUpdateCleanup) {
+			itemUpdateCleanup()
+			itemUpdateCleanup = null
+		}
+	}
+
+	function removeItemEverywhere(itemCode) {
+		if (!itemCode) return
+		for (const registrySet of [registeredAllItems, registeredSearchItems]) {
+			for (const item of [...registrySet]) {
+				if (item?.item_code === itemCode) {
+					registrySet.delete(item)
+				}
+			}
+		}
+
+		allItems.value = allItems.value.filter((item) => item.item_code !== itemCode)
+		searchResults.value = searchResults.value.filter((item) => item.item_code !== itemCode)
+		itemRegistry.delete(itemCode)
+		allItemsVersion.value += 1
+		searchResultsVersion.value += 1
+		clearBaseCache()
+	}
+
+	function startRealtimeItemListener() {
+		if (itemUpdateCleanup || typeof window === "undefined" || !window.frappe?.realtime) return
+
+		const handler = async (data = {}) => {
+			const itemCode = data.item_code || data.name
+			if (!itemCode) return
+
+			if (data.action === "delete" || data.disabled === 1 || data.disabled === true || data.disabled === "1") {
+				removeItemEverywhere(itemCode)
+				try {
+					await offlineWorker.deleteItems([itemCode])
+				} catch (error) {
+					log.warn(`Failed to remove disabled item ${itemCode} from cache`, error)
+				}
+				log.info(`Item removed/disabled via real-time: ${itemCode}`)
+				return
+			}
+
+			// Item may have changed groups, brand, or display eligibility. Reload the
+			// current tab page so the server remains the source of truth.
+			if (posProfile.value) {
+				await setSelectedItemGroup(selectedItemGroup.value)
+			}
+		}
+
+		window.frappe.realtime.on("pos_item_changed", handler)
+		itemUpdateCleanup = () => {
+			window.frappe?.realtime?.off("pos_item_changed", handler)
+		}
 	}
 
 	async function setSelectedItemGroup(group) {
@@ -2099,6 +2162,10 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			posProfileUpdateCleanup()
 			posProfileUpdateCleanup = null
 		}
+		if (itemUpdateCleanup) {
+			itemUpdateCleanup()
+			itemUpdateCleanup = null
+		}
 
 		if (!profile) {
 			profileItemGroups.value = []
@@ -2135,6 +2202,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			posProfileUpdateCleanup = onPosProfileUpdate(async (updateData) => {
 				await handlePosProfileUpdateWithRecovery(updateData, profile)
 			})
+			startRealtimeItemListener()
 
 			// Stop any existing sync before loading items for new profile
 			stopBackgroundCacheSync()

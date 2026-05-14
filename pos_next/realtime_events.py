@@ -218,3 +218,32 @@ def emit_customer_event(doc, method=None):
 			title=_("Real-time Customer Update Event Error"),
 			message=f"Failed to emit customer update event for {doc.name}: {str(e)}",
 		)
+
+
+def emit_item_event(doc, method=None):
+	"""Emit realtime item updates so POS terminals evict disabled/deleted items."""
+	try:
+		action = "delete" if method == "on_trash" else "update"
+		event_data = {
+			"name": doc.name,
+			"item_code": doc.name,
+			"item_name": getattr(doc, "item_name", ""),
+			"item_group": getattr(doc, "item_group", ""),
+			"brand": getattr(doc, "brand", ""),
+			"disabled": getattr(doc, "disabled", 0),
+			"is_sales_item": getattr(doc, "is_sales_item", 0),
+			"action": action,
+			"timestamp": frappe.utils.now(),
+		}
+
+		frappe.publish_realtime(
+			event="pos_item_changed",
+			message=event_data,
+			user=None,
+			after_commit=True,
+		)
+	except Exception as e:
+		frappe.log_error(
+			title=_("Real-time Item Update Event Error"),
+			message=f"Failed to emit item update event for {doc.name}: {str(e)}",
+		)
