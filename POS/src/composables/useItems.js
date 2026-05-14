@@ -10,6 +10,14 @@ export function useItems(posProfile, cartItems = ref([])) {
 	const itemGroups = ref([])
 	const loading = ref(false)
 
+	function isDisabledItem(item) {
+		return item?.disabled === 1 || item?.disabled === true || item?.disabled === "1"
+	}
+
+	function onlyEnabledItems(list) {
+		return Array.isArray(list) ? list.filter((item) => item?.item_code && !isDisabledItem(item)) : []
+	}
+
 	// Resources (kept for server-side refresh when online)
 	const itemsResource = createResource({
 		url: "pos_next.api.items.get_items",
@@ -24,7 +32,7 @@ export function useItems(posProfile, cartItems = ref([])) {
 		},
 		auto: false,
 		onSuccess(data) {
-			items.value = data?.message || data || []
+			items.value = onlyEnabledItems(data?.message || data || [])
 		},
 		onError(error) {
 			console.error("Error fetching items:", error)
@@ -58,7 +66,7 @@ export function useItems(posProfile, cartItems = ref([])) {
 	const filteredItems = computed(() => {
 		if (!items.value || items.value.length === 0) return []
 
-		let filtered = items.value
+		let filtered = onlyEnabledItems(items.value)
 
 		// Filter by search term (local filtering for faster response)
 		if (searchTerm.value && searchTerm.value.length > 0) {
@@ -127,7 +135,8 @@ export function useItems(posProfile, cartItems = ref([])) {
 				barcode,
 				pos_profile: posProfile,
 			})
-			return result?.message || result
+			const item = result?.message || result
+			return isDisabledItem(item) ? null : item
 		} catch (error) {
 			console.error("Error searching by barcode:", error)
 			return null
@@ -155,7 +164,7 @@ export function useItems(posProfile, cartItems = ref([])) {
 					searchTerm.value,
 					100,
 				)
-				items.value = cached || []
+				items.value = onlyEnabledItems(cached || [])
 			} catch (error) {
 				console.error("Error loading from cache:", error)
 				items.value = []
@@ -174,7 +183,8 @@ export function useItems(posProfile, cartItems = ref([])) {
 			const cacheReady = await offlineWorker.isCacheReady()
 			if (isOffline() || cacheReady) {
 				const items = await offlineWorker.searchCachedItems(itemCode, 1)
-				return items?.[0] || null
+				const item = onlyEnabledItems(items)?.[0] || null
+				return item?.item_code === itemCode ? item : null
 			} else {
 				// Fallback to server (implement if needed)
 				return null

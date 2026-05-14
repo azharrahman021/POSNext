@@ -1119,6 +1119,11 @@ function clearLongPress() {
 function selectItem(item, autoAdd = false) {
 	if (!item) return false
 
+	if (item.disabled === 1 || item.disabled === true || item.disabled === "1") {
+		showError(__('"{0}" is disabled and cannot be sold.', [item.item_name || item.item_code]))
+		return false
+	}
+
 	// Early out-of-stock guard — full qty validation happens in cartStore.addItem()
 	if (!item.has_variants && settingsStore.shouldEnforceStockValidation() && shouldValidateItemStock(item)) {
 		const qty = item.actual_qty ?? item.stock_qty ?? 0

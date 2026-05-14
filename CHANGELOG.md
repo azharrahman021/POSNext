@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.4] - 2026-05-15
+
+### Fixed
+- Filter disabled items across POS initial load, search, barcode lookup, legacy offline helpers, and item selection.
+- Force a one-time POS item cache rebuild after the disabled-item filtering fix so items disabled before deployment are removed from terminals.
+- Block disabled items at selection time so stale results cannot be added to the cart.
+
 ## [1.16.3] - 2026-05-15
 
 ### Fixed

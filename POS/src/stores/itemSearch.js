@@ -117,6 +117,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 	// Performance helpers
 	const allItemsVersion = ref(0)
 	const searchResultsVersion = ref(0)
+	const DISABLED_ITEM_CACHE_FIX_VERSION = "1.16.4"
 
 	const baseResultCache = new Map()
 	const itemRegistry = new Map()
@@ -143,6 +144,24 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 
 	function onlyEnabledItems(items) {
 		return Array.isArray(items) ? items.filter((item) => item?.item_code && !isDisabledItem(item)) : []
+	}
+
+	async function ensureDisabledItemCacheMigration() {
+		if (typeof localStorage === "undefined") return
+		if (localStorage.getItem("pos_next_disabled_item_cache_fix") === DISABLED_ITEM_CACHE_FIX_VERSION) return
+		if (isOffline()) return
+
+		try {
+			await offlineWorker.clearItemsCache()
+			replaceAllItems([])
+			setSearchResults([])
+			cacheStats.value = { items: 0, lastSync: null, totalServerItems: 0 }
+			cacheReady.value = false
+			localStorage.setItem("pos_next_disabled_item_cache_fix", DISABLED_ITEM_CACHE_FIX_VERSION)
+			log.info("Cleared item cache to remove stale disabled items")
+		} catch (error) {
+			log.warn("Unable to clear stale item cache for disabled-item fix", error)
+		}
 	}
 
 	// ========================================================================
@@ -519,7 +538,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		// Step 2: Create cache key based on current filter state
 		// Key format: "itemGroup_version_searchTerm"
 		// This ensures cache invalidates when data or filters change
-		const filterKey = `${selectedItemGroup.value || 'all'}_${selectedBrand.value || 'all'}_${allItemsVersion.value}_${searchTerm.value || ''}`
+		const filterKey = `${selectedItemGroup.value || 'all'}_${selectedBrand.value || 'all'}_${allItemsVersion.value}_${searchResultsVersion.value}_${searchTerm.value || ''}`
 
 		// Step 3: Check cache for filtered results
 		let list
@@ -570,6 +589,8 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 				filteredItemsCache.delete(firstKey)
 			}
 		}
+
+		list = onlyEnabledItems(list)
 
 		// Step 4: Inject live stock quantities (optimized)
 		// Use a simple map operation - O(n) complexity
@@ -1718,7 +1739,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			})
 
 			const item = result?.message || result
-			return item
+			return isDisabledItem(item) ? null : item
 		} catch (error) {
 			log.error("Store searchByBarcode error", error)
 			throw error
@@ -1730,7 +1751,8 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			const cacheReady = await offlineWorker.isCacheReady()
 			if (isOffline() || cacheReady) {
 				const items = await offlineWorker.searchCachedItems(itemCode, 1)
-				return items?.[0] || null
+				const item = onlyEnabledItems(items)?.[0] || null
+				return item?.item_code === itemCode ? item : null
 			} else {
 				// Fallback to server (implement if needed)
 				return null
@@ -2203,6 +2225,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 				await handlePosProfileUpdateWithRecovery(updateData, profile)
 			})
 			startRealtimeItemListener()
+			await ensureDisabledItemCacheMigration()
 
 			// Stop any existing sync before loading items for new profile
 			stopBackgroundCacheSync()
