@@ -5,7 +5,7 @@ import { offlineState } from "./offlineState"
 // Cache structure definition - modify this when cache structure changes
 const CACHE_STRUCTURE = {
 	// Define what gets cached
-	items: ["item_code", "item_name", "item_group", "disabled", "barcodes", "price", "stock"],
+	items: ["item_code", "item_name", "item_group", "barcodes", "price", "stock"],
 	customers: ["name", "customer_name", "mobile_no", "email_id"],
 	item_prices: ["price_list", "item_code", "price"],
 	local_stock: ["item_code", "warehouse", "actual_qty"],
@@ -17,11 +17,6 @@ const CACHE_STRUCTURE = {
 		"type",
 	],
 }
-
-const isDisabledItem = (item) => item?.disabled === 1 || item?.disabled === true || item?.disabled === "1"
-
-const onlyEnabledItems = (items) =>
-	Array.isArray(items) ? items.filter((item) => item?.item_code && !isDisabledItem(item)) : []
 
 // Generate cache version from structure hash
 function getCacheStructureHash(structure) {
@@ -174,7 +169,7 @@ export const cacheItemsFromServer = async (posProfile) => {
 		})
 
 		if (response.message && Array.isArray(response.message)) {
-			const items = onlyEnabledItems(response.message)
+			const items = response.message
 
 			// Process items to add searchable fields
 			const processedItems = items.map((item) => ({
@@ -226,8 +221,7 @@ export const cacheCustomersFromServer = async (posProfile) => {
 export const searchCachedItems = async (searchTerm = "", limit = 50) => {
 	try {
 		if (!searchTerm) {
-			const items = await db.items.limit(limit * 2).toArray()
-			return onlyEnabledItems(items).slice(0, limit)
+			return await db.items.limit(limit).toArray()
 		}
 
 		const term = searchTerm.toLowerCase()
@@ -243,7 +237,7 @@ export const searchCachedItems = async (searchTerm = "", limit = 50) => {
 			.limit(limit)
 			.toArray()
 
-		return onlyEnabledItems(results)
+		return results
 	} catch (error) {
 		console.error("Error searching cached items:", error)
 		return []

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.5] - 2026-05-15
+
+### Changed
+- Roll back POS disabled-item filtering changes from the current release while keeping the return invoice compatibility fix.
+
 ## [1.16.4] - 2026-05-15
 
 ### Fixed

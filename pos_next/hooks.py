@@ -158,9 +158,7 @@ override_doctype_class = {
 
 doc_events = {
 	"Item": {
-		"validate": "pos_next.validations.validate_item",
-		"on_update": "pos_next.realtime_events.emit_item_event",
-		"on_trash": "pos_next.realtime_events.emit_item_event"
+		"validate": "pos_next.validations.validate_item"
 	},
 	"Customer": {
 		"after_insert": [

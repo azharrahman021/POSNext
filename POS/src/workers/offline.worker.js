@@ -477,7 +477,7 @@ async function updateLocalStock(items) {
  * @returns {boolean} True if item should be shown
  */
 function shouldShowItem(item) {
-	if (item.disabled === 1 || item.disabled === true || item.disabled === "1") return false
+	if (item.disabled) return false
 	if (showVariantsAsItems) return !item.has_variants
 	return !item.variant_of
 }
@@ -802,26 +802,6 @@ async function deleteCustomers(customerNames) {
 	}
 }
 
-async function deleteItems(itemCodes) {
-	if (!itemCodes || itemCodes.length === 0) return true
-	try {
-		const db = await initDB()
-		await db.transaction('rw', 'items', 'item_prices', async () => {
-			await db.table("items").bulkDelete(itemCodes)
-			for (const itemCode of itemCodes) {
-				await db.table("item_prices").where("item_code").equals(itemCode).delete()
-			}
-		})
-		invalidateCache('search:')
-		invalidateCache('items:')
-		log.success(`Deleted ${itemCodes.length} items from cache`)
-		return true
-	} catch (error) {
-		log.error("Error deleting items from cache", error)
-		throw error
-	}
-}
-
 /**
  * Cache items with transaction batching (10x faster)
  * Uses Dexie transactions for ACID guarantees and batch processing for performance
@@ -848,29 +828,14 @@ async function cacheItemsFromServer(items, batchSize) {
 		// Process all batches in single transaction (ACID + 10x performance boost)
 		await db.transaction('rw', 'items', 'item_prices', 'settings', async () => {
 			for (const batch of batches) {
-				const disabledCodes = batch
-					.filter(item => item?.disabled === 1 || item?.disabled === true || item?.disabled === "1")
-					.map(item => item.item_code)
-					.filter(Boolean)
-				if (disabledCodes.length > 0) {
-					await db.table("items").bulkDelete(disabledCodes)
-					for (const itemCode of disabledCodes) {
-						await db.table("item_prices").where("item_code").equals(itemCode).delete()
-					}
-				}
-
 				// Normalize data using helper (zero-copy where possible)
-				const processedItems = batch
-					.filter(item => item?.item_code && !disabledCodes.includes(item.item_code))
-					.map(item => ({
-						...item,
-						barcodes: extractBarcodes(item),
-					}))
+				const processedItems = batch.map(item => ({
+					...item,
+					barcodes: extractBarcodes(item),
+				}))
 
 				// Bulk insert items (single DB round trip per batch)
-				if (processedItems.length > 0) {
-					await db.table("items").bulkPut(processedItems)
-				}
+				await db.table("items").bulkPut(processedItems)
 
 				// Extract and bulk insert prices
 				// CRITICAL: Compound primary key requires valid price_list AND item_code
@@ -878,7 +843,6 @@ async function cacheItemsFromServer(items, batchSize) {
 					.filter(item => {
 						// Must have item_code (mandatory)
 						if (!item.item_code) return false
-						if (disabledCodes.includes(item.item_code)) return false
 						// Must have some price data
 						return item.rate || item.price_list_rate
 					})
@@ -926,7 +890,7 @@ async function cacheItemsFromServer(items, batchSize) {
 					}
 				}
 
-				totalProcessed += processedItems.length
+				totalProcessed += batch.length
 			}
 
 			// Update sync metadata (inside transaction)
@@ -1762,10 +1726,6 @@ self.onmessage = async (event) => {
 
 			case "DELETE_CUSTOMERS":
 				result = await deleteCustomers(payload.customerNames)
-				break
-
-			case "DELETE_ITEMS":
-				result = await deleteItems(payload.itemCodes)
 				break
 
 			case "CLEAR_ITEMS_CACHE":

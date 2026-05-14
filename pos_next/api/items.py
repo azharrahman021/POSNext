@@ -404,8 +404,6 @@ def search_by_barcode(barcode, pos_profile, customer=None):
 		item_doc = frappe.get_cached_doc("Item", item_code)
 
 		# Check if item is allowed for sales
-		if item_doc.disabled:
-			frappe.throw(_("Item {0} is disabled").format(item_code))
 		if not item_doc.is_sales_item:
 			frappe.throw(_("Item {0} is not allowed for sales").format(item_code))
 
@@ -1881,8 +1879,6 @@ def get_item_details(item_code, pos_profile, customer=None, qty=1, uom=None):
 		item_doc = frappe.get_cached_doc("Item", item_code)
 
 		# Check if item is allowed for sales
-		if item_doc.disabled:
-			frappe.throw(_("Item {0} is disabled").format(item_code))
 		if not item_doc.is_sales_item:
 			frappe.throw(_("Item {0} is not allowed for sales").format(item_code))
 

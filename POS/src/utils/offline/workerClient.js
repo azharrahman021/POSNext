@@ -438,10 +438,6 @@ class OfflineWorkerClient {
 		return this.sendMessage("DELETE_CUSTOMERS", { customerNames })
 	}
 
-	async deleteItems(itemCodes) {
-		return this.sendMessage("DELETE_ITEMS", { itemCodes })
-	}
-
 	async cachePaymentMethods(paymentMethods) {
 		return this.sendMessage("CACHE_PAYMENT_METHODS", { paymentMethods })
 	}

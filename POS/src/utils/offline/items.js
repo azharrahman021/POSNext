@@ -1,17 +1,12 @@
 import { db, getSetting, setSetting } from "./db";
 
-const isDisabledItem = (item) => item?.disabled === 1 || item?.disabled === true || item?.disabled === "1";
-
-const onlyEnabledItems = (items) =>
-	Array.isArray(items) ? items.filter((item) => item?.item_code && !isDisabledItem(item)) : [];
-
 // Cache items in IndexedDB
 export const cacheItems = async (items, priceList = null) => {
 	try {
 		if (!items || items.length === 0) return;
 
 		// Process items with barcodes
-		const processedItems = onlyEnabledItems(items).map((item) => ({
+		const processedItems = items.map((item) => ({
 			...item,
 			barcodes: item.item_barcode
 				? Array.isArray(item.item_barcode)
@@ -25,7 +20,7 @@ export const cacheItems = async (items, priceList = null) => {
 
 		// Save prices if price list is provided
 		if (priceList) {
-			const prices = processedItems.map((item) => ({
+			const prices = items.map((item) => ({
 				price_list: priceList,
 				item_code: item.item_code,
 				rate: item.rate || item.price_list_rate || 0,
@@ -37,7 +32,7 @@ export const cacheItems = async (items, priceList = null) => {
 		// Update last sync time
 		await setSetting("items_last_sync", Date.now());
 
-		console.log(`Cached ${processedItems.length} items`);
+		console.log(`Cached ${items.length} items`);
 		return true;
 	} catch (error) {
 		console.error("Error caching items:", error);
@@ -48,8 +43,8 @@ export const cacheItems = async (items, priceList = null) => {
 // Get cached items
 export const getCachedItems = async (limit = 100) => {
 	try {
-		const items = await db.items.limit(limit * 2).toArray();
-		return onlyEnabledItems(items).slice(0, limit);
+		const items = await db.items.limit(limit).toArray();
+		return items;
 	} catch (error) {
 		console.error("Error getting cached items:", error);
 		return [];
@@ -60,13 +55,12 @@ export const getCachedItems = async (limit = 100) => {
 export const searchCachedItems = async (searchTerm, limit = 50) => {
 	try {
 		if (!searchTerm) {
-			const items = await db.items.limit(limit * 2).toArray();
-			return onlyEnabledItems(items).slice(0, limit);
+			return await db.items.limit(limit).toArray();
 		}
 
 		const term = searchTerm.toLowerCase().trim();
 		const searchWords = term.split(/\s+/).filter(Boolean);
-		const allItems = onlyEnabledItems(await db.items.limit(limit * 10).toArray());
+		const allItems = await db.items.limit(limit * 10).toArray();
 
 		// Filter and score items
 		const results = allItems
@@ -102,7 +96,7 @@ export const searchCachedItems = async (searchTerm, limit = 50) => {
 export const getItemByBarcode = async (barcode) => {
 	try {
 		const item = await db.items.where("barcodes").equals(barcode).first();
-		return isDisabledItem(item) ? null : item;
+		return item;
 	} catch (error) {
 		console.error("Error getting item by barcode:", error);
 		return null;
@@ -120,7 +114,7 @@ export const getCachedVariants = async (templateItemCode) => {
 			.equals(templateItemCode)
 			.toArray();
 
-		return onlyEnabledItems(variants);
+		return variants;
 	} catch (error) {
 		console.error("Error getting cached variants:", error);
 		return [];
@@ -182,7 +176,7 @@ export const updateItemBatchSerialData = async (batchSerialDataMap) => {
 export const getItemWithPrice = async (itemCode, priceList) => {
 	try {
 		const item = await db.items.get(itemCode);
-		if (!item || isDisabledItem(item)) return null;
+		if (!item) return null;
 
 		if (priceList) {
 			const price = await db.item_prices.get({

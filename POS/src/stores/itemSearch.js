@@ -117,7 +117,6 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 	// Performance helpers
 	const allItemsVersion = ref(0)
 	const searchResultsVersion = ref(0)
-	const DISABLED_ITEM_CACHE_FIX_VERSION = "1.16.4"
 
 	const baseResultCache = new Map()
 	const itemRegistry = new Map()
@@ -129,39 +128,12 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 
 	// Real-time POS Profile update handler
 	let posProfileUpdateCleanup = null
-	let itemUpdateCleanup = null
 
 	// Sync cancellation token - incremented to cancel any in-flight sync
 	let syncGeneration = 0
 
 	function getActiveCustomerName() {
 		return activeCustomer.value?.name || activeCustomer.value || null
-	}
-
-	function isDisabledItem(item) {
-		return item?.disabled === 1 || item?.disabled === true || item?.disabled === "1"
-	}
-
-	function onlyEnabledItems(items) {
-		return Array.isArray(items) ? items.filter((item) => item?.item_code && !isDisabledItem(item)) : []
-	}
-
-	async function ensureDisabledItemCacheMigration() {
-		if (typeof localStorage === "undefined") return
-		if (localStorage.getItem("pos_next_disabled_item_cache_fix") === DISABLED_ITEM_CACHE_FIX_VERSION) return
-		if (isOffline()) return
-
-		try {
-			await offlineWorker.clearItemsCache()
-			replaceAllItems([])
-			setSearchResults([])
-			cacheStats.value = { items: 0, lastSync: null, totalServerItems: 0 }
-			cacheReady.value = false
-			localStorage.setItem("pos_next_disabled_item_cache_fix", DISABLED_ITEM_CACHE_FIX_VERSION)
-			log.info("Cleared item cache to remove stale disabled items")
-		} catch (error) {
-			log.warn("Unable to clear stale item cache for disabled-item fix", error)
-		}
 	}
 
 	// ========================================================================
@@ -442,7 +414,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 	}
 
 	function replaceAllItems(items) {
-		const next = onlyEnabledItems(items)
+		const next = Array.isArray(items) ? items : []
 		removeRegisteredItems(registeredAllItems)
 		allItems.value = next
 		allItemsVersion.value += 1
@@ -451,16 +423,15 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 	}
 
 	function appendAllItems(items) {
-		const next = onlyEnabledItems(items)
-		if (next.length === 0) return
-		allItems.value.push(...next)
+		if (!Array.isArray(items) || items.length === 0) return
+		allItems.value.push(...items)
 		allItemsVersion.value += 1
-		registerItems(next, registeredAllItems) // Initializes stock in stock store
+		registerItems(items, registeredAllItems) // Initializes stock in stock store
 		clearBaseCache()
 	}
 
 	function setSearchResults(items) {
-		const next = onlyEnabledItems(items)
+		const next = Array.isArray(items) ? items : []
 		removeRegisteredItems(registeredSearchItems)
 		searchResults.value = next
 		searchResultsVersion.value += 1
@@ -538,7 +509,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		// Step 2: Create cache key based on current filter state
 		// Key format: "itemGroup_version_searchTerm"
 		// This ensures cache invalidates when data or filters change
-		const filterKey = `${selectedItemGroup.value || 'all'}_${selectedBrand.value || 'all'}_${allItemsVersion.value}_${searchResultsVersion.value}_${searchTerm.value || ''}`
+		const filterKey = `${selectedItemGroup.value || 'all'}_${selectedBrand.value || 'all'}_${allItemsVersion.value}_${searchTerm.value || ''}`
 
 		// Step 3: Check cache for filtered results
 		let list
@@ -589,8 +560,6 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 				filteredItemsCache.delete(firstKey)
 			}
 		}
-
-		list = onlyEnabledItems(list)
 
 		// Step 4: Inject live stock quantities (optimized)
 		// Use a simple map operation - O(n) complexity
@@ -1739,7 +1708,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			})
 
 			const item = result?.message || result
-			return isDisabledItem(item) ? null : item
+			return item
 		} catch (error) {
 			log.error("Store searchByBarcode error", error)
 			throw error
@@ -1751,8 +1720,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			const cacheReady = await offlineWorker.isCacheReady()
 			if (isOffline() || cacheReady) {
 				const items = await offlineWorker.searchCachedItems(itemCode, 1)
-				const item = onlyEnabledItems(items)?.[0] || null
-				return item?.item_code === itemCode ? item : null
+				return items?.[0] || null
 			} else {
 				// Fallback to server (implement if needed)
 				return null
@@ -1830,59 +1798,6 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		if (posProfileUpdateCleanup) {
 			posProfileUpdateCleanup()
 			posProfileUpdateCleanup = null
-		}
-		if (itemUpdateCleanup) {
-			itemUpdateCleanup()
-			itemUpdateCleanup = null
-		}
-	}
-
-	function removeItemEverywhere(itemCode) {
-		if (!itemCode) return
-		for (const registrySet of [registeredAllItems, registeredSearchItems]) {
-			for (const item of [...registrySet]) {
-				if (item?.item_code === itemCode) {
-					registrySet.delete(item)
-				}
-			}
-		}
-
-		allItems.value = allItems.value.filter((item) => item.item_code !== itemCode)
-		searchResults.value = searchResults.value.filter((item) => item.item_code !== itemCode)
-		itemRegistry.delete(itemCode)
-		allItemsVersion.value += 1
-		searchResultsVersion.value += 1
-		clearBaseCache()
-	}
-
-	function startRealtimeItemListener() {
-		if (itemUpdateCleanup || typeof window === "undefined" || !window.frappe?.realtime) return
-
-		const handler = async (data = {}) => {
-			const itemCode = data.item_code || data.name
-			if (!itemCode) return
-
-			if (data.action === "delete" || data.disabled === 1 || data.disabled === true || data.disabled === "1") {
-				removeItemEverywhere(itemCode)
-				try {
-					await offlineWorker.deleteItems([itemCode])
-				} catch (error) {
-					log.warn(`Failed to remove disabled item ${itemCode} from cache`, error)
-				}
-				log.info(`Item removed/disabled via real-time: ${itemCode}`)
-				return
-			}
-
-			// Item may have changed groups, brand, or display eligibility. Reload the
-			// current tab page so the server remains the source of truth.
-			if (posProfile.value) {
-				await setSelectedItemGroup(selectedItemGroup.value)
-			}
-		}
-
-		window.frappe.realtime.on("pos_item_changed", handler)
-		itemUpdateCleanup = () => {
-			window.frappe?.realtime?.off("pos_item_changed", handler)
 		}
 	}
 
@@ -2184,10 +2099,6 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			posProfileUpdateCleanup()
 			posProfileUpdateCleanup = null
 		}
-		if (itemUpdateCleanup) {
-			itemUpdateCleanup()
-			itemUpdateCleanup = null
-		}
 
 		if (!profile) {
 			profileItemGroups.value = []
@@ -2224,8 +2135,6 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			posProfileUpdateCleanup = onPosProfileUpdate(async (updateData) => {
 				await handlePosProfileUpdateWithRecovery(updateData, profile)
 			})
-			startRealtimeItemListener()
-			await ensureDisabledItemCacheMigration()
 
 			// Stop any existing sync before loading items for new profile
 			stopBackgroundCacheSync()
