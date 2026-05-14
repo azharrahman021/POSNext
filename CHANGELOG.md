@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.2] - 2026-05-15
+
+### Added
+- Merged upstream POSNext `develop` fixes through BrainWise-DEV/POSNext commit `0847b39`.
+- Added upstream regression coverage for packed item duplication and promotional pricing flows.
+
+### Fixed
+- Preserved customer-specific POS item pricing from the fork while applying upstream item query hardening.
+- Preserved offline credit-sale invoice support while applying upstream offline receipt caching and edit handling.
+- Applied upstream fixes for promotional offers, transaction-level promotional schemes, customer credit allocation refresh, packed item duplication, rounding compatibility, and POS Profile item scope handling.
+
 ## [1.16.1] - 2026-04-30
 
 ### Fixed
