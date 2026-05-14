@@ -952,6 +952,12 @@ const fetchInvoiceResource = createResource({
 				customer: data.customer,
 				customer_name: origInvoice.customer_name || data.customer_name,
 				company: data.company,
+				debit_to: data.debit_to || origInvoice.debit_to,
+				currency: data.currency || origInvoice.currency,
+				conversion_rate:
+					data.conversion_rate || origInvoice.conversion_rate || 1,
+				plc_conversion_rate:
+					data.plc_conversion_rate || origInvoice.plc_conversion_rate || 1,
 				posting_date: origInvoice.posting_date,
 				grand_total: origInvoice.grand_total,
 				paid_amount: origInvoice.paid_amount,
@@ -1036,6 +1042,14 @@ const createReturnResource = createResource({
 			posa_pos_opening_shift: props.posOpeningShift,
 			customer: baseDoc.customer || originalInvoice.value.customer,
 			company: baseDoc.company || originalInvoice.value.company,
+			debit_to: baseDoc.debit_to || originalInvoice.value.debit_to,
+			currency: baseDoc.currency || originalInvoice.value.currency,
+			conversion_rate:
+				baseDoc.conversion_rate || originalInvoice.value.conversion_rate || 1,
+			plc_conversion_rate:
+				baseDoc.plc_conversion_rate ||
+				originalInvoice.value.plc_conversion_rate ||
+				1,
 			is_return: 1,
 			return_against: baseDoc.return_against || originalInvoice.value.name,
 			// Setting to 0 ensures GL entries point to original invoice,
@@ -1059,6 +1073,10 @@ const createReturnResource = createResource({
 				warehouse: item.warehouse,
 				uom: item.uom,
 				conversion_factor: item.conversion_factor || 1,
+				income_account: item.income_account,
+				expense_account: item.expense_account,
+				cost_center: item.cost_center,
+				item_tax_template: item.item_tax_template,
 				// Link to original invoice item row for accurate return tracking in ERPNext
 				sales_invoice_item: item.name,
 			})),

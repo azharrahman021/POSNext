@@ -787,6 +787,57 @@ def update_invoice(data):
         invoice_doc.ignore_pricing_rule = 1
         invoice_doc.flags.ignore_pricing_rule = True
 
+        if doctype == "Sales Invoice" and invoice_doc.get("is_return") and invoice_doc.get("return_against"):
+            original_currency_fields = frappe.db.get_value(
+                "Sales Invoice",
+                invoice_doc.return_against,
+                ["company", "currency", "conversion_rate", "plc_conversion_rate", "debit_to"],
+                as_dict=True,
+            )
+            if original_currency_fields:
+                invoice_doc.company = invoice_doc.company or original_currency_fields.company
+                invoice_doc.currency = invoice_doc.currency or original_currency_fields.currency
+                invoice_doc.debit_to = invoice_doc.debit_to or original_currency_fields.debit_to
+                invoice_doc.conversion_rate = flt(
+                    invoice_doc.conversion_rate
+                    or original_currency_fields.conversion_rate
+                    or 1
+                ) or 1
+                invoice_doc.plc_conversion_rate = flt(
+                    invoice_doc.plc_conversion_rate
+                    or original_currency_fields.plc_conversion_rate
+                    or 1
+                ) or 1
+
+            original_item_names = [
+                item.get("sales_invoice_item")
+                for item in invoice_doc.get("items", [])
+                if item.get("sales_invoice_item")
+            ]
+            original_item_map = {}
+            if original_item_names:
+                original_items = frappe.get_all(
+                    "Sales Invoice Item",
+                    filters={"name": ["in", original_item_names]},
+                    fields=[
+                        "name",
+                        "income_account",
+                        "expense_account",
+                        "cost_center",
+                        "item_tax_template",
+                    ],
+                )
+                original_item_map = {item.name: item for item in original_items}
+
+            for item in invoice_doc.get("items", []):
+                original_item = original_item_map.get(item.get("sales_invoice_item"))
+                if not original_item:
+                    continue
+                item.income_account = item.income_account or original_item.income_account
+                item.expense_account = item.expense_account or original_item.expense_account
+                item.cost_center = item.cost_center or original_item.cost_center
+                item.item_tax_template = item.item_tax_template or original_item.item_tax_template
+
         if pos_profile_doc and invoice_doc.meta.has_field("selling_price_list"):
             from pos_next.api.items import get_effective_selling_price_list
 
@@ -1683,15 +1734,23 @@ def get_invoices(pos_profile, limit=100):
 
 
 @frappe.whitelist()
-def get_draft_invoices(pos_opening_shift, doctype="Sales Invoice"):
-    """Get all draft invoices for a POS opening shift."""
+def get_draft_invoices(pos_opening_shift=None, pos_profile=None, doctype="Sales Invoice"):
+    """Get POS draft invoices for the current shift/profile."""
     filters = {
         "docstatus": 0,
     }
 
-    # Add pos_opening_shift filter if the field exists
-    if frappe.db.has_column(doctype, "pos_opening_shift"):
+    meta = frappe.get_meta(doctype)
+
+    if meta.has_field("is_pos"):
+        filters["is_pos"] = 1
+
+    if pos_opening_shift and meta.has_field("posa_pos_opening_shift"):
+        filters["posa_pos_opening_shift"] = pos_opening_shift
+    elif pos_opening_shift and meta.has_field("pos_opening_shift"):
         filters["pos_opening_shift"] = pos_opening_shift
+    elif pos_profile and meta.has_field("pos_profile"):
+        filters["pos_profile"] = pos_profile
 
     # Performance: Get all invoice names first
     invoices_list = frappe.get_list(
@@ -1722,6 +1781,13 @@ def delete_invoice(invoice):
     # Check if it's a draft
     if frappe.db.get_value(doctype, invoice, "docstatus") != 0:
         frappe.throw(_("Cannot delete submitted invoice {0}").format(invoice))
+
+    invoice_doc = frappe.get_doc(doctype, invoice)
+    pos_profile = invoice_doc.get("pos_profile")
+    if pos_profile and not frappe.get_value("POS Profile", pos_profile, "posa_allow_delete"):
+        frappe.throw(
+            _("Deleting draft invoices is disabled for POS Profile {0}").format(pos_profile)
+        )
 
     frappe.delete_doc(doctype, invoice, force=1)
     return _("Invoice {0} Deleted").format(invoice)
@@ -2283,6 +2349,10 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
             si.outstanding_amount,
             si.customer,
             si.customer_name,
+            si.company,
+            si.currency,
+            si.conversion_rate,
+            si.plc_conversion_rate,
             si.net_total,
             si.total_taxes_and_charges
         )
@@ -2333,6 +2403,12 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
     # Ensure POS flags are set
     return_doc.is_pos = invoice_info.is_pos
     return_doc.pos_profile = invoice_info.pos_profile
+    return_doc.company = return_doc.company or invoice_info.company
+    return_doc.currency = return_doc.currency or invoice_info.currency
+    return_doc.conversion_rate = flt(return_doc.conversion_rate or invoice_info.conversion_rate or 1) or 1
+    return_doc.plc_conversion_rate = flt(
+        return_doc.plc_conversion_rate or invoice_info.plc_conversion_rate or 1
+    ) or 1
 
     # Aggregate quantities already returned from previous return invoices
     ret_si = frappe.qb.DocType("Sales Invoice")
@@ -2401,6 +2477,10 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
         "outstanding_amount": invoice_info.outstanding_amount,
         "customer": invoice_info.customer,
         "customer_name": invoice_info.customer_name,
+        "company": invoice_info.company,
+        "currency": invoice_info.currency,
+        "conversion_rate": invoice_info.conversion_rate,
+        "plc_conversion_rate": invoice_info.plc_conversion_rate,
         "posting_date": invoice_info.posting_date,
         "payments": payments_data,
         "net_total": invoice_info.net_total,

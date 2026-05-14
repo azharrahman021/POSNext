@@ -369,7 +369,7 @@ export async function printInvoiceByName(invoiceName, printFormat = null, letter
  * formats that rely on Bootstrap layout classes may render differently.
  * Paper size and margins are controlled by the QZ Tray config in qzTray.js.
  */
-export async function silentPrintInvoice(invoiceName, printFormat = null) {
+export async function silentPrintInvoice(invoiceName, printFormat = null, letterhead = null) {
 	if (isLocalOnlyInvoiceName(invoiceName)) {
 		const doc = await hydrateLocalOnlyInvoice({ name: invoiceName })
 		if (doc.items?.length > 0) return silentPrintInvoiceFromDoc(doc)
@@ -380,13 +380,15 @@ export async function silentPrintInvoice(invoiceName, printFormat = null) {
 		)
 	}
 	const format = printFormat || DEFAULT_PRINT_FORMAT
-
-	const result = await call("frappe.www.printview.get_html_and_style", {
+	const args = {
 		doc: "Sales Invoice",
 		name: invoiceName,
 		print_format: format,
-		no_letterhead: 1,
-	})
+		no_letterhead: letterhead ? 0 : 1,
+	}
+	if (letterhead) args.letterhead = letterhead
+
+	const result = await call("frappe.www.printview.get_html_and_style", args)
 
 	const html = result?.html || result?.message?.html
 	const style = result?.style || result?.message?.style || ""
@@ -443,15 +445,28 @@ export async function printWithSilentFallback(invoiceData, printFormat = null) {
 		}
 	}
 
+	let invoiceDoc = invoiceData?.pos_profile ? invoiceData : null
+	if (!invoiceDoc) {
+		try {
+			invoiceDoc = await call("pos_next.api.invoices.get_invoice", {
+				invoice_name: invoiceName,
+			})
+		} catch (err) {
+			log.warn("Could not fetch invoice print settings, using defaults:", err?.message || err)
+		}
+	}
+
+	const settings = await resolvePrintSettings(invoiceDoc?.pos_profile, printFormat)
+
 	try {
-		await silentPrintInvoice(invoiceName, printFormat)
+		await silentPrintInvoice(invoiceName, settings.printFormat, settings.letterhead)
 		return { method: "silent", success: true }
 	} catch (err) {
 		log.warn("Silent print failed, falling back to browser:", err?.message || err)
 	}
 
 	try {
-		await printInvoiceByName(invoiceName, printFormat)
+		await printInvoiceByName(invoiceName, settings.printFormat, settings.letterhead)
 		return { method: "browser", success: true }
 	} catch (err) {
 		log.error("Browser print fallback also failed:", err)

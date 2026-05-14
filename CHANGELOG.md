@@ -12,11 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Merged upstream POSNext `develop` fixes through BrainWise-DEV/POSNext commit `0847b39`.
 - Added upstream regression coverage for packed item duplication and promotional pricing flows.
+- Backed POS draft invoices with ERPNext draft Sales Invoices for improved recovery and cross-session continuity.
+- Added receipt print tests for custom silent print format handling.
 
 ### Fixed
 - Preserved customer-specific POS item pricing from the fork while applying upstream item query hardening.
 - Preserved offline credit-sale invoice support while applying upstream offline receipt caching and edit handling.
 - Applied upstream fixes for promotional offers, transaction-level promotional schemes, customer credit allocation refresh, packed item duplication, rounding compatibility, and POS Profile item scope handling.
+- Preserved return invoice currency and account values when creating returns.
+- Fixed POS silent printing to respect configured print format and letterhead settings.
 
 ## [1.16.1] - 2026-04-30
 
