@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.6] - 2026-05-15
+
+### Fixed
+- Remove remaining disabled-item filters from the offline worker so cached POS items load after the rollback.
+
 ## [1.16.5] - 2026-05-15
 
 ### Changed

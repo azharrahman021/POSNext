@@ -477,7 +477,6 @@ async function updateLocalStock(items) {
  * @returns {boolean} True if item should be shown
  */
 function shouldShowItem(item) {
-	if (item.disabled) return false
 	if (showVariantsAsItems) return !item.has_variants
 	return !item.variant_of
 }
@@ -528,7 +527,6 @@ async function searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
 			const barcodeResults = await db.table("items")
 				.where("barcodes")
 				.equals(term)
-				.filter(item => !item.disabled)
 				.limit(limit)
 				.toArray()
 
@@ -542,7 +540,6 @@ async function searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
 			const codeResults = await db.table("items")
 				.where("item_code")
 				.startsWithIgnoreCase(term)
-				.filter(item => !item.disabled)
 				.limit(limit)
 				.toArray()
 
@@ -556,7 +553,6 @@ async function searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
 			const nameResults = await db.table("items")
 				.where("item_name")
 				.startsWithIgnoreCase(term)
-				.filter(item => !item.disabled)
 				.limit(limit)
 				.toArray()
 
@@ -570,7 +566,6 @@ async function searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
 		// Fallback: Multi-word or complex search
 		// Fetch larger sample and filter in memory (trade memory for speed)
 		const allItems = await db.table("items")
-			.filter(item => !item.disabled)
 			.limit(limit * 10)
 			.toArray()
 
