@@ -938,7 +938,7 @@
 											:value="formatQuantity(item.quantity)"
 											@click.stop
 											@input="updateQuantity(item, $event.target.value)"
-											@blur="handleQuantityBlur(item)"
+											@blur="handleQuantityBlur(item, $event.target.value)"
 											@keydown.enter="$event.target.blur()"
 											type="text"
 											inputmode="decimal"
@@ -1847,13 +1847,15 @@ function updateQuantity(item, value) {
 	// Prevent editing resolved barcode items
 	if (item.is_resolved_barcode) return;
 
+	const normalizedValue = String(value || "").trim();
 	const qty = Number.parseFloat(value);
 
 	// If the input isn't a valid number (e.g., user cleared the field), do nothing
 	if (isNaN(qty)) return;
 
-	// If quantity is zero or negative, remove the item from the cart
-	if (qty <= 0) return emit("remove-item", item.item_code, item.uom);
+	// Allow transient states while typing fractional quantities, e.g. "0" → "0.5".
+	// Final validation/removal happens on blur.
+	if (qty <= 0 || normalizedValue === "0" || normalizedValue === "0.") return;
 
 	// For positive numbers, update quantity immediately (no rounding here while typing)
 	emit("update-quantity", item.item_code, qty, item.uom);
@@ -1866,15 +1868,18 @@ function updateQuantity(item, value) {
  * - Rounds to 4 decimal places for consistency
  *
  * @param {Object} item - Cart item that lost focus
+ * @param {String} value - Final input value
  */
-function handleQuantityBlur(item) {
-	// When user leaves the input field, round and validate
-	if (!item.quantity || item.quantity <= 0) {
+function handleQuantityBlur(item, value) {
+	const qty = Number.parseFloat(value);
+
+	// When user leaves the input field, round and validate the actual input.
+	if (isNaN(qty) || qty <= 0) {
 		// If quantity is 0 or invalid, remove the item
 		emit("remove-item", item.item_code, item.uom);
 	} else {
 		// Round to 4 decimal places for consistency
-		const roundedQty = Math.round(item.quantity * 10000) / 10000;
+		const roundedQty = Math.round(qty * 10000) / 10000;
 		if (roundedQty !== item.quantity) {
 			emit("update-quantity", item.item_code, roundedQty, item.uom);
 		}
