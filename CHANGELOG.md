@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Preserve manually reduced POS cart item rates when creating and submitting Sales Invoices.
+- Pin POS frontend builds to Node 20 so dependency installs and production builds use a supported runtime.
 
 ## [1.16.4] - 2026-05-17
 
