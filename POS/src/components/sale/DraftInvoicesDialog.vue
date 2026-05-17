@@ -165,15 +165,16 @@ import {
 	formatCurrency as formatCurrencyUtil,
 	roundCurrency,
 } from "@/utils/currency"
-import { clearAllDrafts, deleteDraft, getAllDrafts } from "@/utils/draftManager"
-import { printInvoiceCustom } from "@/utils/printInvoice"
+import { printDraftInvoice } from "@/utils/printInvoice"
 import { useToast } from "@/composables/useToast"
+import { usePOSDraftsStore } from "@/stores/posDrafts"
 import { usePOSShiftStore } from "@/stores/posShift"
 import { Button, Dialog } from "frappe-ui"
-import { onMounted, ref, watch } from "vue"
+import { computed, onMounted, ref, watch } from "vue"
 
 const { showSuccess, showError } = useToast()
 const shiftStore = usePOSShiftStore()
+const draftsStore = usePOSDraftsStore()
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -190,7 +191,7 @@ const props = defineProps({
 const emit = defineEmits(["update:modelValue", "load-draft", "drafts-updated"])
 
 const show = ref(props.modelValue)
-const drafts = ref([])
+const drafts = computed(() => draftsStore.drafts)
 const showDeleteDialog = ref(false)
 const showClearAllDialog = ref(false)
 const draftToDelete = ref(null)
@@ -215,26 +216,33 @@ onMounted(() => {
 
 async function loadDrafts() {
 	try {
-		drafts.value = await getAllDrafts()
+		await draftsStore.loadDrafts()
 	} catch (error) {
 		console.error("Error loading drafts:", error)
 		showError(__("Failed to load draft invoices"))
 	}
 }
 
-function handlePrintDraft(draft) {
+async function handlePrintDraft(draft) {
 	if (!props.allowPrintDraftInvoices) {
 		return
 	}
 
 	try {
+		const profile = shiftStore.currentProfile || {}
 		const invoiceData = {
 			name: draft.draft_id,
-			company: shiftStore.profileCompany,
+			doctype: "Sales Invoice",
+			docstatus: 0,
+			is_pos: 1,
+			pos_profile: draft.pos_profile || shiftStore.profileName,
+			company: draft.company || shiftStore.profileCompany,
 			items: draft.items,
 			payments: [],
 			grand_total: calculateTotal(draft.items),
 			posting_date: draft.created_at,
+			customer:
+				draft.customer?.name || draft.customer?.customer_name || draft.customer,
 			customer_name:
 				draft.customer?.customer_name || draft.customer?.name || draft.customer,
 			status: "Draft",
@@ -242,7 +250,11 @@ function handlePrintDraft(draft) {
 			footer:
 				"الفاتورة لم يتم تسجيلها في حسابات الجهة، وبالتالي لا يُعتد بها، ولا تتحمل الجهة أي مسؤولية عن أي أضرار قد تنتج عنها.",
 		}
-		printInvoiceCustom(invoiceData)
+		await printDraftInvoice(
+			invoiceData,
+			profile.print_format,
+			profile.letter_head,
+		)
 	} catch (error) {
 		console.error("Error printing draft:", error)
 		showError(__("Failed to print draft"))
@@ -256,7 +268,7 @@ function handleDeleteDraft(draftId) {
 
 async function confirmDeleteDraft() {
 	try {
-		await deleteDraft(draftToDelete.value)
+		await draftsStore.deleteDraft(draftToDelete.value)
 		await loadDrafts()
 		showDeleteDialog.value = false
 		draftToDelete.value = null
@@ -273,7 +285,9 @@ async function confirmDeleteDraft() {
 
 async function confirmClearAll() {
 	try {
-		await clearAllDrafts()
+		await Promise.all(
+			drafts.value.map((draft) => draftsStore.deleteDraft(draft.draft_id)),
+		)
 		await loadDrafts()
 		showClearAllDialog.value = false
 

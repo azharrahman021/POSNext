@@ -85,6 +85,93 @@ function receiptDocFromQueuedInvoice(offlineId, raw) {
 	}
 }
 
+function normalizeDraftItemForPrint(item) {
+	const qty = item.qty ?? item.quantity ?? 0
+	const rate = item.rate ?? item.price_list_rate ?? 0
+	const amount = item.amount ?? qty * rate
+
+	return {
+		doctype: "Sales Invoice Item",
+		item_code: item.item_code,
+		item_name: item.item_name || item.item_code,
+		description: item.description || item.item_name || item.item_code,
+		qty,
+		quantity: qty,
+		rate,
+		price_list_rate: item.price_list_rate ?? rate,
+		amount,
+		net_amount: item.net_amount ?? amount,
+		discount_percentage: item.discount_percentage || 0,
+		discount_amount: item.discount_amount || 0,
+		serial_no: item.serial_no,
+		batch_no: item.batch_no,
+		uom: item.uom || item.stock_uom,
+		stock_uom: item.stock_uom || item.uom,
+	}
+}
+
+function buildDraftSalesInvoiceDoc(invoiceData) {
+	const items = Array.isArray(invoiceData.items)
+		? invoiceData.items.map(normalizeDraftItemForPrint)
+		: []
+	const grandTotal =
+		Number.parseFloat(invoiceData.grand_total) ||
+		items.reduce((sum, item) => sum + (Number.parseFloat(item.amount) || 0), 0)
+	const customer = invoiceData.customer || invoiceData.customer_name
+
+	return {
+		...invoiceData,
+		doctype: invoiceData.doctype || "Sales Invoice",
+		name: invoiceData.name || __("Draft"),
+		docstatus: 0,
+		is_pos: 1,
+		is_return: 0,
+		customer,
+		customer_name: invoiceData.customer_name || customer,
+		posting_date: invoiceData.posting_date || new Date().toISOString().slice(0, 10),
+		posting_time: invoiceData.posting_time || new Date().toTimeString().slice(0, 8),
+		items,
+		payments: Array.isArray(invoiceData.payments) ? invoiceData.payments : [],
+		grand_total: grandTotal,
+		rounded_total: invoiceData.rounded_total ?? grandTotal,
+		base_grand_total: invoiceData.base_grand_total ?? grandTotal,
+		net_total: invoiceData.net_total ?? grandTotal,
+		total: invoiceData.total ?? grandTotal,
+		outstanding_amount: invoiceData.outstanding_amount ?? grandTotal,
+		paid_amount: invoiceData.paid_amount ?? derivePaidAmount(invoiceData),
+		status: invoiceData.status || "Draft",
+	}
+}
+
+function openPrintWindow(features = "width=800,height=600") {
+	const printWindow = window.open("", "_blank", features)
+	if (!printWindow) {
+		log.error("Cannot open print window — popup blocked.")
+		throw new Error(__("Popup blocked — check your browser settings."))
+	}
+	return printWindow
+}
+
+function writePrintHTML(printWindow, invoiceData, html, style = "") {
+	const printContent = `<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>${__("Invoice - {0}", [invoiceData.name])}</title>
+	<style>${style || ""}</style>
+</head>
+<body>${html}</body>
+</html>`
+
+	printWindow.document.open()
+	printWindow.document.write(printContent)
+	printWindow.document.close()
+	printWindow.onload = () => {
+		setTimeout(() => printWindow.print(), 250)
+	}
+	return true
+}
+
 /**
  * Hydrate a local-only invoice from cache. Checks sessionStorage first
  * (fast path, survives within the tab), then falls back to IndexedDB
@@ -355,6 +442,56 @@ export async function printInvoiceByName(invoiceName, printFormat = null, letter
 
 	const settings = await resolvePrintSettings(invoiceDoc.pos_profile, printFormat, letterhead)
 	return printInvoice(invoiceDoc, settings.printFormat, settings.letterhead)
+}
+
+/**
+ * Render an unsaved POS draft through the POS Profile's configured Frappe
+ * print format. Falls back to the local receipt when server rendering is not
+ * possible for the selected custom format.
+ */
+export async function printDraftInvoice(
+	invoiceData,
+	printFormat = null,
+	letterhead = null,
+) {
+	if (!invoiceData?.name) throw new Error("Invalid draft invoice data")
+
+	const draftDoc = buildDraftSalesInvoiceDoc(invoiceData)
+	const settings = await resolvePrintSettings(
+		draftDoc.pos_profile,
+		printFormat,
+		letterhead,
+	)
+	const printWindow = openPrintWindow()
+	printWindow.document.open()
+	printWindow.document.write(
+		`<!DOCTYPE html><html><body>${__("Preparing print...")}</body></html>`,
+	)
+	printWindow.document.close()
+
+	try {
+		const result = await call("pos_next.api.invoices.render_draft_invoice_print", {
+			doc: JSON.stringify(draftDoc),
+			print_format: settings.printFormat,
+			no_letterhead: settings.letterhead ? 0 : 1,
+			letterhead: settings.letterhead,
+			trigger_print: 1,
+		})
+
+		const html = result?.html || result?.message?.html
+		const style = result?.style || result?.message?.style || ""
+		if (!html) throw new Error("Failed to render draft print format")
+
+		return writePrintHTML(printWindow, draftDoc, html, style)
+	} catch (err) {
+		log.warn("Draft print format render failed, using local receipt:", err?.message || err)
+		return writePrintHTML(
+			printWindow,
+			draftDoc,
+			buildReceiptHTML(draftDoc),
+			RECEIPT_STYLES,
+		)
+	}
 }
 
 // ============================================================================

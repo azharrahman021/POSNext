@@ -975,6 +975,7 @@ export function useInvoice() {
 		deliveryDate = null,
 		writeOffAmount = 0,
 		isCreditSale = false,
+		existingInvoiceName = null,
 	) {
 		/**
 		 * Two-step submission process with mutex protection:
@@ -1025,6 +1026,10 @@ export function useInvoice() {
 					is_pos: 1,
 					update_stock: 1, // Critical: Ensures stock is updated
 					is_credit_sale: isCreditSale ? 1 : 0,
+				}
+
+				if (existingInvoiceName) {
+					invoiceData.name = existingInvoiceName
 				}
 
 				if (targetDoctype === "Sales Order" && deliveryDate) {

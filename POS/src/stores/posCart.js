@@ -275,11 +275,15 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			deliveryDate.value,
 			writeOffAmount.value,
 			isCreditSale.value,
+			String(currentDraftId.value || "").startsWith("DRAFT-")
+				? null
+				: currentDraftId.value,
 		)
 		// Reset write-off amount after successful submission
 		if (result) {
 			writeOffAmount.value = 0
 			isCreditSale.value = false
+			currentDraftId.value = null
 		}
 		return result
 	}

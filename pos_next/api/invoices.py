@@ -1683,15 +1683,98 @@ def get_invoices(pos_profile, limit=100):
 
 
 @frappe.whitelist()
-def get_draft_invoices(pos_opening_shift, doctype="Sales Invoice"):
-    """Get all draft invoices for a POS opening shift."""
+def render_draft_invoice_print(
+    doc,
+    print_format=None,
+    letterhead=None,
+    no_letterhead=None,
+    trigger_print=True,
+    style=None,
+):
+    """Render an unsaved POS draft with the configured POS Profile print format."""
+    from frappe.www.printview import (
+        get_print_format_doc,
+        get_print_style,
+        get_rendered_template,
+        set_link_titles,
+    )
+
+    data = frappe.parse_json(doc)
+    if not data:
+        frappe.throw(_("Draft invoice data is required"))
+
+    doctype = data.get("doctype") or DOCTYPE_SALES_INVOICE
+    if doctype != DOCTYPE_SALES_INVOICE:
+        frappe.throw(_("Only Sales Invoice drafts can be printed from POS"))
+
+    pos_profile = data.get("pos_profile")
+    if not pos_profile:
+        frappe.throw(_("POS Profile is required to print draft invoices"))
+
+    has_access = frappe.db.exists(
+        "POS Profile User",
+        {"parent": pos_profile, "user": frappe.session.user},
+    )
+    if not has_access:
+        frappe.throw(_("You don't have access to this POS Profile"))
+
+    profile_print_settings = frappe.db.get_value(
+        DOCTYPE_POS_PROFILE,
+        pos_profile,
+        ["print_format", "letter_head"],
+        as_dict=True,
+    ) or {}
+
+    selected_print_format = print_format or profile_print_settings.get("print_format")
+    selected_letterhead = letterhead or profile_print_settings.get("letter_head")
+    if no_letterhead is None:
+        no_letterhead = 0 if selected_letterhead else 1
+
+    document = frappe.get_doc(data)
+    document.docstatus = 0
+    document.flags.ignore_permissions = True
+
+    print_format_doc = get_print_format_doc(selected_print_format, meta=document.meta)
+    set_link_titles(document)
+
+    previous_ignore_print_permissions = getattr(
+        frappe.flags, "ignore_print_permissions", False
+    )
+    frappe.flags.ignore_print_permissions = True
+    try:
+        html = get_rendered_template(
+            doc=document,
+            print_format=print_format_doc,
+            meta=document.meta,
+            no_letterhead=no_letterhead,
+            letterhead=selected_letterhead,
+            trigger_print=trigger_print,
+            settings={"allow_print_for_draft": 1},
+        )
+    finally:
+        frappe.flags.ignore_print_permissions = previous_ignore_print_permissions
+
+    return {
+        "html": html,
+        "style": get_print_style(style=style, print_format=print_format_doc),
+        "print_format": getattr(print_format_doc, "name", "Standard"),
+    }
+
+
+@frappe.whitelist()
+def get_draft_invoices(pos_opening_shift=None, pos_profile=None, doctype="Sales Invoice"):
+    """Get all draft invoices for a POS opening shift or POS Profile."""
     filters = {
         "docstatus": 0,
     }
 
-    # Add pos_opening_shift filter if the field exists
-    if frappe.db.has_column(doctype, "pos_opening_shift"):
-        filters["pos_opening_shift"] = pos_opening_shift
+    if pos_opening_shift:
+        if frappe.db.has_column(doctype, "posa_pos_opening_shift"):
+            filters["posa_pos_opening_shift"] = pos_opening_shift
+        elif frappe.db.has_column(doctype, "pos_opening_shift"):
+            filters["pos_opening_shift"] = pos_opening_shift
+    elif pos_profile and frappe.db.has_column(doctype, "pos_profile"):
+        filters["pos_profile"] = pos_profile
 
     # Performance: Get all invoice names first
     invoices_list = frappe.get_list(
@@ -1723,7 +1806,7 @@ def delete_invoice(invoice):
     if frappe.db.get_value(doctype, invoice, "docstatus") != 0:
         frappe.throw(_("Cannot delete submitted invoice {0}").format(invoice))
 
-    frappe.delete_doc(doctype, invoice, force=1)
+    frappe.delete_doc(doctype, invoice, force=1, ignore_permissions=True)
     return _("Invoice {0} Deleted").format(invoice)
 
 
