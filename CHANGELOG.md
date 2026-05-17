@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.7] - 2026-05-17
+
+### Added
+- Add native Android Bluetooth ESC/POS printing support for paired receipt printers.
+
 ## [1.16.6] - 2026-05-17
 
 ### Fixed

@@ -1,6 +1,10 @@
 import qz from "qz-tray"
 import { ref } from "vue"
 import { call } from "@/utils/apiWrapper"
+import {
+	isAndroidBluetoothPrinterAvailable,
+	openAndroidCashDrawer,
+} from "@/utils/androidBluetoothPrinter"
 import { logger } from "@/utils/logger"
 
 const log = logger.create("QZTray")
@@ -127,6 +131,12 @@ let _connectPromise = null
  * @returns {Promise<boolean>} true if connected successfully
  */
 export async function connect() {
+	if (isAndroidBluetoothPrinterAvailable()) {
+		qzConnected.value = true
+		qzCertStatus.value = "trusted"
+		return true
+	}
+
 	if (qz.websocket.isActive()) {
 		qzConnected.value = true
 		return true
@@ -178,6 +188,11 @@ async function _doConnect() {
  * Disconnect from QZ Tray.
  */
 export async function disconnect() {
+	if (isAndroidBluetoothPrinterAvailable()) {
+		qzConnected.value = true
+		return
+	}
+
 	if (!qz.websocket.isActive()) {
 		qzConnected.value = false
 		return
@@ -290,6 +305,10 @@ export async function printHTML(html, printerName, options = {}) {
  * @returns {Promise<boolean>} true if the command was dispatched
  */
 export async function openCashDrawer(printerName, options = {}) {
+	if (isAndroidBluetoothPrinterAvailable()) {
+		return openAndroidCashDrawer()
+	}
+
 	if (!qz.websocket.isActive()) {
 		const ok = await connect()
 		if (!ok) {

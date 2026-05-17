@@ -3,6 +3,12 @@ import { call } from "frappe-ui"
 import { logger } from "@/utils/logger"
 import { useToast } from "@/composables/useToast"
 import {
+	findAndroidPrinters,
+	getSavedAndroidPrinterAddress,
+	isAndroidBluetoothPrinterAvailable,
+	saveAndroidPrinterAddress,
+} from "@/utils/androidBluetoothPrinter"
+import {
 	qzConnected,
 	qzConnecting,
 	qzCertStatus,
@@ -18,13 +24,23 @@ const CERT_READY_KEY = "pos_qz_cert_ready"
 
 // ── Singleton State (shared across all callers) ───────────────────────
 const printers = ref([])
-const selectedPrinter = ref(getSavedPrinterName())
+const selectedPrinter = ref(
+	isAndroidBluetoothPrinterAvailable()
+		? getSavedAndroidPrinterAddress()
+		: getSavedPrinterName()
+)
 const loadingPrinters = ref(false)
 const certLoading = ref(false)
 const certReady = ref(_loadCertReady())
 
 const printerOptions = computed(() =>
-	printers.value.map((p) => ({ label: p, value: p }))
+	printers.value.map((p) => {
+		if (typeof p === "string") return { label: p, value: p }
+		return {
+			label: p.name ? `${p.name} (${p.address})` : p.address,
+			value: p.address,
+		}
+	})
 )
 
 function _buildCertFileName(company) {
@@ -80,7 +96,12 @@ _checkCertificateOnce()
 
 // Persist printer selection
 watch(selectedPrinter, (name) => {
-	if (name) savePrinterName(name)
+	if (!name) return
+	if (isAndroidBluetoothPrinterAvailable()) {
+		saveAndroidPrinterAddress(name)
+		return
+	}
+	savePrinterName(name)
 })
 
 // When QZ confirms trust, cache it for future sessions
@@ -97,6 +118,11 @@ export function useQzTray() {
 
 	// ── Connection ─────────────────────────────────────────────────────
 	async function handleConnect() {
+		if (isAndroidBluetoothPrinterAvailable()) {
+			await refreshPrinters()
+			return
+		}
+
 		const ok = await qzConnect()
 		if (ok) {
 			await refreshPrinters()
@@ -107,6 +133,18 @@ export function useQzTray() {
 	async function refreshPrinters() {
 		loadingPrinters.value = true
 		try {
+			if (isAndroidBluetoothPrinterAvailable()) {
+				printers.value = await findAndroidPrinters()
+				const saved = getSavedAndroidPrinterAddress()
+				if (printers.value.length === 1) {
+					selectedPrinter.value = printers.value[0].address
+					saveAndroidPrinterAddress(selectedPrinter.value)
+				} else if (saved && printers.value.some((p) => p.address === saved)) {
+					selectedPrinter.value = saved
+				}
+				return
+			}
+
 			printers.value = await findPrinters()
 			const saved = getSavedPrinterName()
 			if (printers.value.length === 1) {
@@ -173,6 +211,7 @@ export function useQzTray() {
 		qzConnected,
 		qzConnecting,
 		qzCertStatus,
+		isAndroidBluetoothPrinterAvailable,
 
 		// Shared singleton state
 		printers,

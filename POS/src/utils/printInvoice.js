@@ -3,6 +3,10 @@ import { logger } from "@/utils/logger"
 import { getOfflineReceiptPayload } from "@/utils/offline/offlineReceiptCache"
 import { getOfflineInvoiceByOfflineId } from "@/utils/offline/sync"
 import { offlineWorker } from "@/utils/offline/workerClient"
+import {
+	isAndroidBluetoothPrinterAvailable,
+	printInvoiceOnAndroid,
+} from "@/utils/androidBluetoothPrinter"
 import { printHTML as qzPrintHTML } from "@/utils/qzTray"
 
 const log = logger.create("PrintInvoice")
@@ -544,6 +548,13 @@ export async function silentPrintInvoice(invoiceName, printFormat = null) {
  * Silent-print a full invoice dict using the same HTML as the offline receipt fallback.
  */
 export async function silentPrintInvoiceFromDoc(invoiceData) {
+	if (isAndroidBluetoothPrinterAvailable()) {
+		await printInvoiceOnAndroid(invoiceData)
+		log.info(`Android Bluetooth print sent for ${invoiceData?.name}`)
+		flagOfflineInvoicePrinted(invoiceData?.name)
+		return true
+	}
+
 	const fullHTML = buildReceiptDocumentHTML(invoiceData, { includeControls: false })
 	await qzPrintHTML(fullHTML)
 	log.info(`Silent print (local receipt) for ${invoiceData?.name}`)
@@ -560,6 +571,25 @@ export async function printWithSilentFallback(invoiceData, printFormat = null) {
 	invoiceData = await hydrateLocalOnlyInvoice(invoiceData)
 	const invoiceName = invoiceData?.name
 	if (!invoiceName) throw new Error("Invalid invoice data — missing name")
+
+	if (isAndroidBluetoothPrinterAvailable()) {
+		try {
+			let androidDoc = invoiceData
+			if (!androidDoc.items?.length && !isLocalOnlyInvoiceName(invoiceName)) {
+				androidDoc = await call("pos_next.api.invoices.get_invoice", {
+					invoice_name: invoiceName,
+				})
+			}
+			if (!androidDoc?.items?.length) {
+				throw new Error("Invoice data is not available for Android printing")
+			}
+			await printInvoiceOnAndroid(androidDoc)
+			flagOfflineInvoicePrinted(invoiceName)
+			return { method: "android", success: true }
+		} catch (err) {
+			log.warn("Android Bluetooth print failed, trying other print paths:", err?.message || err)
+		}
+	}
 
 	if (
 		isLocalOnlyInvoiceName(invoiceName) &&

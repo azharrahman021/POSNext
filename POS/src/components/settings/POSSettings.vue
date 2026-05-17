@@ -366,7 +366,7 @@
 											<CheckboxField
 												v-model="settings.silent_print"
 												:label="__('Silent Print')"
-												:description="__('Send receipts directly to a thermal printer via QZ Tray (no browser dialog)')"
+												:description="isAndroidBluetoothPrinterAvailable() ? __('Send receipts directly to a paired Bluetooth printer on Android') : __('Send receipts directly to a thermal printer via QZ Tray (no browser dialog)')"
 											/>
 
 											<!-- QZ Tray Printer Settings (shown when silent print is enabled) -->
@@ -375,16 +375,16 @@
 												<div class="flex items-center gap-2">
 													<div
 														class="w-2.5 h-2.5 rounded-full flex-shrink-0"
-														:class="qzConnecting ? 'bg-yellow-500 animate-pulse' : qzConnected ? 'bg-green-500' : 'bg-red-500'"
+														:class="isAndroidBluetoothPrinterAvailable() ? 'bg-green-500' : qzConnecting ? 'bg-yellow-500 animate-pulse' : qzConnected ? 'bg-green-500' : 'bg-red-500'"
 													></div>
 													<span
 														class="text-xs font-medium"
-														:class="qzConnecting ? 'text-yellow-700' : qzConnected ? 'text-green-700' : 'text-red-700'"
+														:class="isAndroidBluetoothPrinterAvailable() ? 'text-green-700' : qzConnecting ? 'text-yellow-700' : qzConnected ? 'text-green-700' : 'text-red-700'"
 													>
-														{{ qzConnecting ? __('Connecting to QZ Tray...') : qzConnected ? __('QZ Tray Connected') : __('QZ Tray Not Connected') }}
+														{{ isAndroidBluetoothPrinterAvailable() ? __('Android Bluetooth Printing') : qzConnecting ? __('Connecting to QZ Tray...') : qzConnected ? __('QZ Tray Connected') : __('QZ Tray Not Connected') }}
 													</span>
 													<button
-														v-if="!qzConnected && !qzConnecting"
+														v-if="!isAndroidBluetoothPrinterAvailable() && !qzConnected && !qzConnecting"
 														@click="handleQzConnect"
 														class="ms-auto text-xs px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded transition-colors"
 													>
@@ -397,9 +397,9 @@
 													<div class="flex-1">
 														<SelectField
 															v-model="selectedPrinter"
-															:label="__('Printer')"
+															:label="isAndroidBluetoothPrinterAvailable() ? __('Bluetooth Printer') : __('Printer')"
 															:options="printerOptions"
-															:description="qzPrinters.length === 0 && !loadingPrinters ? __('No printers found. Is QZ Tray running?') : ''"
+															:description="qzPrinters.length === 0 && !loadingPrinters ? (isAndroidBluetoothPrinterAvailable() ? __('No paired Bluetooth printers found. Pair the printer in Android settings first.') : __('No printers found. Is QZ Tray running?')) : ''"
 														/>
 													</div>
 													<button
@@ -420,6 +420,7 @@
 
 												<!-- QZ Certificate Status & Setup -->
 												<div
+													v-if="!isAndroidBluetoothPrinterAvailable()"
 													:class="[
 														'p-3 rounded-lg border',
 														qzCertStatus === 'trusted'
@@ -536,7 +537,10 @@
 														<svg class="w-4 h-4 text-teal-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 															<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
 														</svg>
-														<p class="text-xs text-teal-800 leading-relaxed">
+														<p v-if="isAndroidBluetoothPrinterAvailable()" class="text-xs text-teal-800 leading-relaxed">
+															{{ __('Pair the Bluetooth receipt printer in Android settings, then refresh this list and select it here.') }}
+														</p>
+														<p v-else class="text-xs text-teal-800 leading-relaxed">
 															{{ __('QZ Tray must be installed and running on this computer. Download from') }}
 															<a href="https://qz.io/download/" target="_blank" class="font-semibold underline">qz.io</a>.
 															{{ __('If QZ Tray is unavailable, printing will fall back to the browser dialog.') }}
@@ -652,6 +656,7 @@ const {
 	refreshPrinters: handleRefreshPrinters,
 	generateCertificate: handleSetupQzCertificate,
 	downloadCertificate: handleDownloadQzCertificate,
+	isAndroidBluetoothPrinterAvailable,
 } = useQzTray()
 
 // Warehouse options
