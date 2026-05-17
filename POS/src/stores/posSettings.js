@@ -63,6 +63,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		// Miscellaneous
 		input_qty: 0,
 		allow_negative_stock: 0,
+		allow_global_items: 0,
 		// Sales Persons
 		enable_sales_persons: "Disabled",
 		// Security
@@ -220,6 +221,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	const allowNegativeStock = computed(() =>
 		Boolean(settings.value.allow_negative_stock),
 	)
+	const allowGlobalItems = computed(() =>
+		Boolean(settings.value.allow_global_items),
+	)
 
 	// Computed - Sales Persons
 	const enableSalesPersons = computed(() =>
@@ -341,6 +345,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			allow_change_posting_date: 0,
 			input_qty: 0,
 			allow_negative_stock: 0,
+			allow_global_items: 0,
 			enable_sales_persons: "Disabled",
 			// Security
 			enable_session_lock: 0,
@@ -470,6 +475,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		// Computed - Miscellaneous
 		inputQty,
 		allowNegativeStock,
+		allowGlobalItems,
 
 		// Computed - Sales Persons
 		enableSalesPersons,

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.4] - 2026-05-17
+
+### Added
+- Add POS Settings support for including global items without an assigned company.
+
 ## [1.16.3] - 2026-05-17
 
 ### Fixed
