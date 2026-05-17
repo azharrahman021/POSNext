@@ -943,7 +943,12 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 					limit: unfilteredLimit,
 					show_variants_as_items: getShowVariantsFlag(),
 				})
-				const list = response?.message || response || []
+				let list = response?.message || response || []
+
+				if (list.length === 0 && hasFilters) {
+					log.warn("Initial All Items fetch returned no items; trying first POS Profile item group")
+					list = await fetchItemsFromGroups(profile, itemGroupFilters, unfilteredLimit)
+				}
 
 				if (list.length > 0) {
 					// Store first batch in allItems
@@ -970,6 +975,12 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 							log.warn("Background batch/serial caching failed:", err.message)
 						})
 					}
+				} else {
+					replaceAllItems([])
+					totalItemsLoaded.value = 0
+					currentOffset.value = 0
+					hasMore.value = false
+					log.warn("No items returned from server during initial POS load")
 				}
 
 				// Start background sync for large catalogs to cache ALL items to IndexedDB

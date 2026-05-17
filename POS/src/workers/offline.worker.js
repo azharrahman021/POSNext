@@ -522,61 +522,24 @@ async function searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
 		const term = searchTerm.toLowerCase().trim()
 		const searchWords = term.split(/\s+/).filter(Boolean)
 
-		// Optimize: Use indexes for single-word searches
-		if (searchWords.length === 1) {
-			// Try barcode index first (most specific)
-			const barcodeResults = await db.table("items")
-				.where("barcodes")
-				.equals(term)
-				.filter(item => !item.disabled)
-				.limit(limit)
-				.toArray()
-
-			if (barcodeResults.length > 0) {
-				cacheQueryResult(cacheKey, barcodeResults)
-				recordMetric('searchCachedItems', performance.now() - startTime, false)
-				return barcodeResults
-			}
-
-			// Try item_code index (second most specific)
-			const codeResults = await db.table("items")
-				.where("item_code")
-				.startsWithIgnoreCase(term)
-				.filter(item => !item.disabled)
-				.limit(limit)
-				.toArray()
-
-			if (codeResults.length > 0) {
-				cacheQueryResult(cacheKey, codeResults)
-				recordMetric('searchCachedItems', performance.now() - startTime, false)
-				return codeResults
-			}
-
-			// Try item_name index
-			const nameResults = await db.table("items")
-				.where("item_name")
-				.startsWithIgnoreCase(term)
-				.filter(item => !item.disabled)
-				.limit(limit)
-				.toArray()
-
-			if (nameResults.length > 0) {
-				cacheQueryResult(cacheKey, nameResults)
-				recordMetric('searchCachedItems', performance.now() - startTime, false)
-				return nameResults
-			}
-		}
-
-		// Fallback: Multi-word or complex search
-		// Fetch larger sample and filter in memory (trade memory for speed)
+		// Fuzzy search across the cached catalog. Do not return early from a
+		// prefix index hit, because that can hide better item_name matches once
+		// the user types a space or a second word.
 		const allItems = await db.table("items")
-			.filter(item => !item.disabled)
-			.limit(limit * 10)
+			.filter(item => shouldShowItem(item))
 			.toArray()
 
 		const results = allItems
 			.map(item => {
-				const searchable = `${item.item_code || ""} ${item.item_name || ""} ${item.description || ""}`.toLowerCase()
+				const itemCode = (item.item_code || "").toLowerCase()
+				const itemName = (item.item_name || "").toLowerCase()
+				const description = (item.description || "").toLowerCase()
+				const group = (item.item_group || "").toLowerCase()
+				const brand = (item.brand || "").toLowerCase()
+				const barcodes = Array.isArray(item.barcodes)
+					? item.barcodes.map(barcode => String(barcode).toLowerCase())
+					: []
+				const searchable = `${itemCode} ${itemName} ${description} ${group} ${brand} ${barcodes.join(" ")}`
 
 				// All words must match
 				if (!searchWords.every(word => searchable.includes(word))) {
@@ -585,10 +548,13 @@ async function searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
 
 				// Score for relevance ranking
 				let score = 100
-				if (item.item_name?.toLowerCase() === term) score = 1000
-				else if (item.item_code?.toLowerCase() === term) score = 900
-				else if (item.item_name?.toLowerCase().startsWith(term)) score = 500
-				else if (item.item_code?.toLowerCase().startsWith(term)) score = 400
+				if (barcodes.includes(term)) score = 1500
+				else if (itemName === term) score = 1000
+				else if (itemCode === term) score = 900
+				else if (itemName.startsWith(term)) score = 700
+				else if (itemCode.startsWith(term)) score = 600
+				else if (searchWords.every(word => itemName.split(/\s+/).some(part => part.startsWith(word)))) score = 500
+				else if (itemName.includes(term)) score = 400
 
 				return { item, score }
 			})

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.3] - 2026-05-17
+
+### Fixed
+- Improve cached POS item fuzzy search so partial words and multi-word terms stay visible while typing.
+- Add an initial item-load fallback for POS Profiles with item group filters when the all-items fetch returns empty.
+
 ## [1.16.2] - 2026-05-17
 
 ### Changed
