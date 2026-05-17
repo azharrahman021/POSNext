@@ -54,7 +54,7 @@ export default defineConfig({
 			buildConfig: {
 				indexHtmlPath: "../pos_next/www/pos.html",
 				outDir: "../pos_next/public/pos",
-				emptyOutDir: true,
+				emptyOutDir: false,
 				sourcemap: enableSourceMap,
 			},
 		}),
@@ -209,7 +209,7 @@ export default defineConfig({
 	build: {
 		chunkSizeWarningLimit: 1500,
 		outDir: "../pos_next/public/pos",
-		emptyOutDir: true,
+		emptyOutDir: false,
 		target: "es2015",
 		sourcemap: enableSourceMap,
 	},
