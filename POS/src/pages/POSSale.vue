@@ -1041,7 +1041,12 @@ import {
 	printInvoiceByName,
 	printWithSilentFallback,
 } from "@/utils/printInvoice";
-import { qzConnected, connect as qzConnect, disconnect as qzDisconnect } from "@/utils/qzTray";
+import {
+	qzConnected,
+	connect as qzConnect,
+	disconnect as qzDisconnect,
+	openCashDrawer,
+} from "@/utils/qzTray";
 
 import { Button, Dialog, createResource } from "frappe-ui";
 import { call } from "@/utils/apiWrapper";
@@ -1093,6 +1098,37 @@ const {
 
 // Initialize toast
 const { showSuccess, showError, showWarning } = useToast();
+
+function hasCashPayment(payments = []) {
+	return payments.some((payment) => {
+		if (!payment || payment.is_customer_credit) return false;
+		const amount = Number.parseFloat(payment.amount || 0);
+		if (amount <= 0) return false;
+		if (payment.is_cash_payment) return true;
+
+		const accountType = String(payment.account_type || "").toLowerCase();
+		const type = String(payment.type || "").toLowerCase();
+		const mode = String(payment.mode_of_payment || "").toLowerCase();
+		return (
+			accountType === "cash" ||
+			type === "cash" ||
+			mode.includes("cash") ||
+			mode.includes("نقد") ||
+			mode.includes("نقدي")
+		);
+	});
+}
+
+async function openCashDrawerIfNeeded(paymentData) {
+	if (!hasCashPayment(paymentData?.payments || [])) return;
+
+	try {
+		await openCashDrawer();
+	} catch (error) {
+		log.error("Cash drawer open failed:", error);
+		showWarning(__("Invoice submitted, but cash drawer failed to open"));
+	}
+}
 
 // Initialize logger
 const log = logger.create("POSSale");
@@ -2120,6 +2156,7 @@ async function handlePaymentCompleted(paymentData) {
 			};
 			uiStore.setLastOfflinePrintDoc(offlinePrintDoc);
 			cacheOfflineReceiptPayload(offlineReceiptName, offlinePrintDoc);
+			await openCashDrawerIfNeeded(paymentData);
 			uiStore.showPaymentDialog = false;
 			cartStore.clearCart();
 			// Reset cart hash after successful payment
@@ -2183,6 +2220,7 @@ async function handlePaymentCompleted(paymentData) {
 				const invoiceTotal = result.grand_total || result.total || 0;
 				const paidAmount = paymentData.paid_amount || invoiceTotal;
 
+				await openCashDrawerIfNeeded(paymentData);
 				uiStore.showPaymentDialog = false;
 				cartStore.clearCart();
 				// Reset cart hash after successful payment

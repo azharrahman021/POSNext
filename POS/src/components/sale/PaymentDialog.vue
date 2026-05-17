@@ -2149,6 +2149,8 @@ function _upsertPaymentEntry(method, amt) {
 			mode_of_payment: method.mode_of_payment,
 			amount: roundCurrency(amt),
 			type: method.type || __("Cash"),
+			account_type: method.account_type || "",
+			is_cash_payment: isCashPaymentMethod(method),
 			is_wallet_payment: isWalletPaymentMethod(method.mode_of_payment),
 		})
 	}

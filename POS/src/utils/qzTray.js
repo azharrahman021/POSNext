@@ -274,3 +274,53 @@ export async function printHTML(html, printerName, options = {}) {
 		throw err
 	}
 }
+
+/**
+ * Pulse the printer-connected cash drawer via ESC/POS.
+ *
+ * This uses the standard Epson-compatible drawer kick command:
+ * ESC p m t1 t2. The defaults work for most RJ11/RJ12 drawers connected
+ * through a thermal receipt printer.
+ *
+ * @param {string} [printerName] - Target printer. Falls back to saved printer.
+ * @param {Object} [options]
+ * @param {number} [options.pin] - Drawer pin/channel, 0 or 1 (default 0)
+ * @param {number} [options.onTime] - Pulse on-time byte (default 25)
+ * @param {number} [options.offTime] - Pulse off-time byte (default 250)
+ * @returns {Promise<boolean>} true if the command was dispatched
+ */
+export async function openCashDrawer(printerName, options = {}) {
+	if (!qz.websocket.isActive()) {
+		const ok = await connect()
+		if (!ok) {
+			throw new Error("QZ Tray is not available")
+		}
+	}
+
+	const printer = printerName || getSavedPrinterName()
+	if (!printer) {
+		throw new Error("No printer selected. Please select a printer in POS Settings.")
+	}
+
+	const pin = options.pin ?? 0
+	const onTime = options.onTime ?? 25
+	const offTime = options.offTime ?? 250
+	const pulse = String.fromCharCode(0x1b, 0x70, pin, onTime, offTime)
+	const config = qz.configs.create(printer)
+
+	try {
+		await qz.print(config, [
+			{
+				type: "raw",
+				format: "command",
+				flavor: "plain",
+				data: pulse,
+			},
+		])
+		log.info(`Cash drawer pulse sent to "${printer}"`)
+		return true
+	} catch (err) {
+		log.error(`Cash drawer pulse failed on "${printer}":`, err?.message || err)
+		throw err
+	}
+}
