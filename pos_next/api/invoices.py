@@ -94,6 +94,81 @@ def calculate_price_list_rate(item_rate, discount_pct, current_price_list_rate):
     return current_price_list_rate if current_price_list_rate else item_rate
 
 
+def _get_manual_rate_price_list_rate(item):
+    """Return the invoice base rate for a manually edited item line."""
+    item_rate = flt(item.get(FIELD_RATE) or 0)
+    qty = flt(item.get("qty") or item.get("quantity") or 1) or 1
+    discount_pct = flt(item.get(FIELD_DISCOUNT_PERCENTAGE) or 0)
+    discount_amount = flt(item.get("discount_amount") or 0)
+
+    if discount_pct > 0 and discount_pct < 100 and item_rate > 0:
+        return calculate_price_list_rate(item_rate, discount_pct, 0)
+
+    if discount_amount > 0:
+        return item_rate + (discount_amount / qty)
+
+    return item_rate
+
+
+def prepare_invoice_item_pricing(items, pos_profile=None, pos_settings_cache=None):
+    """Normalize POS Next item pricing before ERPNext recalculates totals."""
+    for item in items or []:
+        item_rate = flt(item.get(FIELD_RATE) or 0)
+        discount_pct = flt(item.get(FIELD_DISCOUNT_PERCENTAGE) or 0)
+        frontend_price_list_rate = flt(item.get("price_list_rate") or 0)
+        is_manual_edit = cint(item.get(FIELD_IS_RATE_MANUALLY_EDITED) or 0)
+
+        if is_manual_edit:
+            validation = validate_manual_rate_edit(item, pos_profile, pos_settings_cache)
+            if not validation.get("valid"):
+                frappe.throw(validation.get("message"))
+
+            manual_price_list_rate = _get_manual_rate_price_list_rate(item)
+            if manual_price_list_rate > 0:
+                item.price_list_rate = manual_price_list_rate
+                if getattr(item, "meta", None) and item.meta.has_field("base_price_list_rate"):
+                    item.base_price_list_rate = manual_price_list_rate
+        else:
+            # NORMAL FLOW: Trust frontend's price_list_rate if provided and valid
+            if frontend_price_list_rate > 0:
+                item.price_list_rate = frontend_price_list_rate
+            # Fallback: reverse-calculate if discount exists but no price_list_rate
+            elif discount_pct > 0 and discount_pct < 100 and item_rate > 0:
+                item.price_list_rate = calculate_price_list_rate(
+                    item_rate, discount_pct, frontend_price_list_rate
+                )
+            else:
+                # No discount or price_list_rate - use rate as is
+                item.price_list_rate = item_rate
+
+            # Ensure price_list_rate is never less than rate (data integrity)
+            if flt(item.price_list_rate) < item_rate:
+                item.price_list_rate = item_rate
+
+        # POS Next computes offers itself (via apply_offers) and sends each
+        # item with discount_percentage / discount_amount / rate already set.
+        # We pair that with invoice_doc.ignore_pricing_rule = 1 so ERPNext's
+        # own pricing engine stays out of the way.
+        #
+        # However, ERPNext's get_pricing_rule_for_item() has a branch that
+        # fires when ignore_pricing_rule=1 AND the doc already exists in DB
+        # AND item.pricing_rules is non-empty — it interprets that as the
+        # user disabling pricing rules on an invoice that previously had
+        # them, calls remove_pricing_rule_for_item(), and silently zeroes
+        # discount_percentage / discount_amount / rate on the next save.
+        # That branch fires on the 2nd save (submit step), producing
+        # "Partly Paid" invoices where the cashier collected the discounted
+        # amount but the saved grand_total reverted to the pre-discount
+        # price. See erpnext/accounts/doctype/pricing_rule/pricing_rule.py
+        # around line 421.
+        #
+        # Clearing item.pricing_rules here avoids that branch entirely. The
+        # discount itself is preserved via the discount_percentage /
+        # discount_amount fields we already set above.
+        if item.get("pricing_rules"):
+            item.pricing_rules = ""
+
+
 def validate_manual_rate_edit(item, pos_profile=None, pos_settings_cache=None):
     """
     Validate manually edited item rates against POS Settings business rules.
@@ -822,75 +897,9 @@ def update_invoice(data):
             else:
                 pos_settings_cache = {FIELD_DISABLE_ROUNDED_TOTAL: pos_profile_rounded}
 
-        # ========================================================================
-        # DISCOUNT CALCULATION - CRITICAL LOGIC
-        # ========================================================================
-        # Frontend sends: rate (discounted), price_list_rate (original), discount_percentage
-        # Priority: Trust frontend's price_list_rate if provided (avoids rounding errors)
-        # Fallback: Reverse-calculate price_list_rate from rate and discount_percentage
-        #
-        # Formula: rate = price_list_rate * (1 - discount_percentage/100)
-        # Reverse: price_list_rate = rate / (1 - discount_percentage/100)
-        # ========================================================================
-        for item in invoice_doc.get("items", []):
-            item_rate = flt(item.rate or 0)
-            discount_pct = flt(item.discount_percentage or 0)
-            frontend_price_list_rate = flt(item.get("price_list_rate") or 0)
-            is_manual_edit = cint(item.get(FIELD_IS_RATE_MANUALLY_EDITED) or 0)
-
-            if is_manual_edit:
-                # MANUAL RATE EDIT: preserve original price_list_rate for audit
-                original_rate = flt(item.get(FIELD_ORIGINAL_RATE) or item.get(FIELD_PRICE_LIST_RATE) or 0)
-                if original_rate > 0:
-                    item.price_list_rate = original_rate
-
-                # Validate manual rate edit against business rules (uses cached settings)
-                validation = validate_manual_rate_edit(item, pos_profile, pos_settings_cache)
-                if not validation.get("valid"):
-                    frappe.throw(validation.get("message"))
-            else:
-                # NORMAL FLOW: Trust frontend's price_list_rate if provided and valid
-                if frontend_price_list_rate > 0:
-                    item.price_list_rate = frontend_price_list_rate
-                # Fallback: reverse-calculate if discount exists but no price_list_rate
-                elif discount_pct > 0 and discount_pct < 100 and item_rate > 0:
-                    item.price_list_rate = calculate_price_list_rate(
-                        item_rate, discount_pct, frontend_price_list_rate
-                    )
-                else:
-                    # No discount or price_list_rate - use rate as is
-                    item.price_list_rate = item_rate
-
-                # Ensure price_list_rate is never less than rate (data integrity)
-                if flt(item.price_list_rate) < item_rate:
-                    item.price_list_rate = item_rate
-
-            # IMPORTANT: Keep the rate from frontend (do NOT set to 0)
-            # ERPNext will recalculate if needed, but preserving frontend rate
-            # prevents rounding issues and ensures UI matches invoice
-
-            # POS Next computes offers itself (via apply_offers) and sends each
-            # item with discount_percentage / discount_amount / rate already set.
-            # We pair that with invoice_doc.ignore_pricing_rule = 1 so ERPNext's
-            # own pricing engine stays out of the way.
-            #
-            # However, ERPNext's get_pricing_rule_for_item() has a branch that
-            # fires when ignore_pricing_rule=1 AND the doc already exists in DB
-            # AND item.pricing_rules is non-empty — it interprets that as the
-            # user disabling pricing rules on an invoice that previously had
-            # them, calls remove_pricing_rule_for_item(), and silently zeroes
-            # discount_percentage / discount_amount / rate on the next save.
-            # That branch fires on the 2nd save (submit step), producing
-            # "Partly Paid" invoices where the cashier collected the discounted
-            # amount but the saved grand_total reverted to the pre-discount
-            # price. See erpnext/accounts/doctype/pricing_rule/pricing_rule.py
-            # around line 421.
-            #
-            # Clearing item.pricing_rules here avoids that branch entirely. The
-            # discount itself is preserved via the discount_percentage /
-            # discount_amount fields we already set above.
-            if item.get("pricing_rules"):
-                item.pricing_rules = ""
+        # Normalize item rates before ERPNext recalculates totals. Manual rate
+        # edits are treated as the line's base price, not as an item discount.
+        prepare_invoice_item_pricing(invoice_doc.get("items"), pos_profile, pos_settings_cache)
 
         # Set invoice flags BEFORE calculations
         if doctype == "Sales Invoice":
@@ -1395,6 +1404,24 @@ def submit_invoice(invoice=None, data=None):
                         title="Failed to increment coupon usage",
                         message=f"Coupon: {coupon_code}, Error: {str(e)}"
                     )
+
+        pos_settings_cache = None
+        if pos_profile:
+            pos_settings_cache = frappe.db.get_value(
+                DOCTYPE_POS_SETTINGS,
+                {"pos_profile": pos_profile},
+                [
+                    FIELD_ALLOW_USER_TO_EDIT_RATE,
+                    FIELD_MAX_DISCOUNT_ALLOWED,
+                    FIELD_ALLOW_NEGATIVE_STOCK,
+                ],
+                as_dict=True,
+            )
+
+        # Re-apply POS pricing intent immediately before the submit save. The
+        # draft returned by ERPNext can lose transient manual-rate markers, so
+        # the frontend submits the original POS payload with the draft name.
+        prepare_invoice_item_pricing(invoice_doc.get("items"), pos_profile, pos_settings_cache)
 
         # Auto-set batch numbers for returns
         _auto_set_return_batches(invoice_doc)

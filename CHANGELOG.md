@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.6] - 2026-05-17
+
+### Fixed
+- Preserve manually reduced POS cart item rates when creating and submitting Sales Invoices.
+
 ## [1.16.4] - 2026-05-17
 
 ### Added

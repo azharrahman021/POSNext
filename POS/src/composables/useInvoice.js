@@ -714,7 +714,10 @@ export function useInvoice() {
 	 */
 	function computeBackendRate(item) {
 		const qty = item.quantity || item.qty || 1
-		const priceListRate = item.price_list_rate || item.rate || 0
+		const isManuallyEdited = item.is_rate_manually_edited === 1
+		const priceListRate = isManuallyEdited
+			? item.rate || item.price_list_rate || 0
+			: item.price_list_rate || item.rate || 0
 		const discountAmount = item.discount_amount || 0
 
 		if (taxInclusive.value) {
@@ -747,26 +750,35 @@ export function useInvoice() {
 	 * @returns {Array} Items formatted for ERPNext Sales Invoice
 	 */
 	function formatItemsForSubmission(items) {
-		const mapRow = (item) => ({
-			item_code: item.item_code,
-			item_name: item.item_name,
-			qty: item.quantity || item.qty || 1,
-			rate: item.is_free_item ? 0 : computeBackendRate(item),
-			price_list_rate: item.is_free_item ? 0 : roundCurrency(item.price_list_rate || item.rate),
-			uom: item.uom,
-			warehouse: item.warehouse,
-			batch_no: item.batch_no,
-			serial_no: item.serial_no,
-			use_serial_batch_fields: item.batch_no || item.serial_no ? 1 : 0,
-			conversion_factor: item.conversion_factor || 1,
-			discount_percentage: roundCurrency(item.discount_percentage || 0),
-			discount_amount: roundCurrency(item.discount_amount || 0),
-			pricing_rules: stringifyPricingRules(item.pricing_rules),
-			// Manual rate edit tracking for audit logging
-			is_rate_manually_edited: item.is_rate_manually_edited || 0,
-			original_rate: item.original_rate || null,
-			is_free_item: item.is_free_item || 0,
-		})
+		const mapRow = (item) => {
+			const isManuallyEdited = item.is_rate_manually_edited === 1
+			const submittedPriceListRate = isManuallyEdited
+				? item.rate || item.price_list_rate
+				: item.price_list_rate || item.rate
+
+			return {
+				item_code: item.item_code,
+				item_name: item.item_name,
+				qty: item.quantity || item.qty || 1,
+				rate: item.is_free_item ? 0 : computeBackendRate(item),
+				price_list_rate: item.is_free_item
+					? 0
+					: roundCurrency(submittedPriceListRate || 0),
+				uom: item.uom,
+				warehouse: item.warehouse,
+				batch_no: item.batch_no,
+				serial_no: item.serial_no,
+				use_serial_batch_fields: item.batch_no || item.serial_no ? 1 : 0,
+				conversion_factor: item.conversion_factor || 1,
+				discount_percentage: roundCurrency(item.discount_percentage || 0),
+				discount_amount: roundCurrency(item.discount_amount || 0),
+				pricing_rules: stringifyPricingRules(item.pricing_rules),
+				// Manual rate edit tracking for audit logging
+				is_rate_manually_edited: item.is_rate_manually_edited || 0,
+				original_rate: item.original_rate || null,
+				is_free_item: item.is_free_item || 0,
+			}
+		}
 
 		const out = []
 		for (const item of items) {
@@ -1062,6 +1074,7 @@ export function useInvoice() {
 						"Failed to create draft invoice - no invoice name returned",
 					)
 				}
+				invoiceData.name = invoiceDoc.name
 
 				const submitData = {
 					change_amount:
@@ -1077,7 +1090,7 @@ export function useInvoice() {
 
 				try {
 					const result = await submitInvoiceResource.submit({
-						invoice: invoiceDoc,
+						invoice: invoiceData,
 						data: submitData,
 					})
 
