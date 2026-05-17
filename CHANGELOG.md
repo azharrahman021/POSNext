@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.2] - 2026-05-17
+
+### Changed
+- Bump POS Next app version after merging the latest BrainWise-DEV `develop` updates.
+
 ## [1.16.1] - 2026-04-30
 
 ### Fixed
