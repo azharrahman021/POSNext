@@ -38,17 +38,20 @@ export function shouldValidateItemStock(item) {
  * @returns {{ available: boolean, actualQty: number, error: string|null }}
  */
 export function checkStockAvailability(item, requestedQty, warehouse) {
-	const actualQty = item.actual_qty ?? item.stock_qty ?? 0
+	const actualQty = item.original_stock ?? item.actual_qty ?? item.stock_qty ?? 0
+	const conversionFactor = Number.parseFloat(item.conversion_factor) || 1
+	const requestedStockQty = Number.parseFloat(requestedQty || 0) * conversionFactor
 	const wh = warehouse || item.warehouse || ''
 
-	if (actualQty >= requestedQty) {
+	if (actualQty >= requestedStockQty) {
 		return { available: true, actualQty, error: null }
 	}
 
 	return {
 		available: false,
 		actualQty,
-		error: formatStockError(item.item_name, requestedQty, actualQty, wh),
+		requestedStockQty,
+		error: formatStockError(item.item_name, requestedQty, actualQty, wh, item),
 	}
 }
 
@@ -84,12 +87,20 @@ export async function getItemStock(itemCode, warehouse) {
  * @param {string} warehouse - Warehouse name
  * @returns {string} - Formatted error message
  */
-export function formatStockError(itemName, requested, available, warehouse) {
+export function formatStockError(itemName, requested, available, warehouse, item = {}) {
+	const requestedQty = Number.parseFloat(requested || 0)
+	const availableQty = Number.parseFloat(available || 0)
+	const conversionFactor = Number.parseFloat(item.conversion_factor) || 1
+	const requestedStockQty = requestedQty * conversionFactor
+	const requestedUom = item.uom || item.stock_uom || (requestedQty === 1 ? "unit" : "units")
+	const stockUom = item.stock_uom || requestedUom
+
 	if (available <= 0) {
 		return `"${itemName}" is out of stock in warehouse "${warehouse}".`
 	}
 
-	const unit = requested === 1 ? "unit" : "units"
-	const availableUnit = available === 1 ? "unit" : "units"
-	return `Not enough stock for "${itemName}".\n\nYou requested ${requested} ${unit}, but only ${available} ${availableUnit} available in "${warehouse}".`
+	const requestedLabel = requestedUom === stockUom
+		? `${requestedQty} ${requestedUom}`
+		: `${requestedQty} ${requestedUom} (${requestedStockQty} ${stockUom})`
+	return `Not enough stock for "${itemName}".\n\nYou requested ${requestedLabel}, but only ${availableQty} ${stockUom} available in "${warehouse}".`
 }
