@@ -1328,6 +1328,9 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		cartItem.conversion_factor = conversionFactor
 		cartItem.rate = pricing.rate
 		cartItem.price_list_rate = pricing.price_list_rate
+		cartItem.discount_percentage = pricing.discount_percentage || 0
+		cartItem.discount_amount = pricing.discount_amount || 0
+		cartItem.pricing_rules = pricing.pricing_rules || null
 	}
 
 	/**

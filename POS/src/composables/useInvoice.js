@@ -126,6 +126,9 @@ export function useInvoice() {
 				return {
 					rate: itemDetails.price_list_rate || itemDetails.rate,
 					price_list_rate: itemDetails.price_list_rate,
+					discount_percentage: itemDetails.discount_percentage || 0,
+					discount_amount: itemDetails.discount_amount || 0,
+					pricing_rules: itemDetails.pricing_rules || null,
 				}
 			} catch (err) {
 				log.warn("Server UOM pricing unavailable, resolving from IndexedDB", err)
@@ -267,8 +270,9 @@ export function useInvoice() {
 				rate: item.rate || item.price_list_rate || 0,
 				price_list_rate: item.price_list_rate || item.rate || 0,
 				quantity: quantity,
-				discount_amount: 0,
-				discount_percentage: 0,
+				discount_amount: item.discount_amount || 0,
+				discount_percentage: item.discount_percentage || 0,
+				pricing_rules: item.pricing_rules || null,
 				tax_amount: 0,
 				amount: quantity * (item.rate || item.price_list_rate || 0),
 				stock_qty: item.stock_qty || 0,
