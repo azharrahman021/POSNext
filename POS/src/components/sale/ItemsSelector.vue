@@ -386,6 +386,10 @@
 									<span class="font-semibold text-blue-600">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</span>
 									<span class="text-gray-400">/ {{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</span>
 							</p>
+							<p v-if="getPrimaryLocation(item)" class="text-[8px] sm:text-[9px] text-emerald-700 truncate leading-tight mt-0.5">
+								{{ getPrimaryLocation(item) }}: {{ Math.floor(getPrimaryLocationQty(item)) }}
+								<span v-if="getLocationCount(item) > 1" class="text-gray-400">+{{ getLocationCount(item) - 1 }}</span>
+							</p>
 						</div>
 					</div>
 				</div>
@@ -551,6 +555,10 @@
 								<div v-if="item.attributes" class="text-[8px] sm:text-[9px] text-gray-400 truncate leading-tight">
 									{{ Object.values(item.attributes).join(' / ') }}
 								</div>
+								<div v-if="getPrimaryLocation(item)" class="text-[10px] text-emerald-700 truncate leading-tight">
+									{{ getPrimaryLocation(item) }}: {{ Math.floor(getPrimaryLocationQty(item)) }}
+									<span v-if="getLocationCount(item) > 1" class="text-gray-400">+{{ getLocationCount(item) - 1 }}</span>
+								</div>
 							</td>
 							<td class="hidden sm:table-cell px-2 sm:px-3 py-2 whitespace-nowrap sm:max-w-[150px]">
 								<div class="text-xs sm:text-sm text-gray-500 truncate" :title="item.item_code">{{ item.item_code }}</div>
@@ -713,6 +721,49 @@
 		:uom="warehouseDialogItem.uom"
 		:company="warehouseDialogItem.company"
 	/>
+
+	<div
+		v-if="locationPrompt"
+		class="fixed inset-0 z-[10000] flex items-center justify-center bg-gray-900/50 px-3"
+		@click.self="closeLocationPrompt"
+	>
+		<div class="w-full max-w-md bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden">
+			<div class="px-4 py-3 border-b border-gray-200">
+				<h3 class="text-sm font-semibold text-gray-900">{{ __('Select Picked Location') }}</h3>
+				<p class="text-xs text-gray-500 mt-1 truncate">{{ locationPrompt.item.item_name }}</p>
+			</div>
+			<div class="p-4 space-y-2">
+				<div v-if="locationPrompt.defaultLocation" class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+					{{ __('Default location {0} has only {1} available.', [
+						locationPrompt.defaultLocation.label,
+						Math.floor(locationPrompt.defaultLocation.available_qty || 0)
+					]) }}
+				</div>
+				<button
+					v-for="location in locationPrompt.locations"
+					:key="location.warehouse"
+					@click="chooseLocation(location)"
+					class="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-md border border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-start transition-colors"
+				>
+					<span class="min-w-0">
+						<span class="block text-sm font-medium text-gray-900 truncate">{{ location.label }}</span>
+						<span class="block text-xs text-gray-500 truncate">{{ location.warehouse }}</span>
+					</span>
+					<span class="text-sm font-semibold text-emerald-700 whitespace-nowrap">
+						{{ Math.floor(location.available_qty || 0) }}
+					</span>
+				</button>
+			</div>
+			<div class="px-4 py-3 bg-gray-50 border-t border-gray-200 flex justify-end">
+				<button
+					@click="closeLocationPrompt"
+					class="px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+				>
+					{{ __('Cancel') }}
+				</button>
+			</div>
+		</div>
+	</div>
 </template>
 
 <script setup>
@@ -724,6 +775,7 @@ import { useStock } from "@/composables/useStock"
 import { useDialogState } from "@/composables/useDialogState"
 import { useSearchInput } from "@/composables/useSearchInput"
 import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/currency"
+import { getItemLocationsBulk, resolvePosItemWarehouse } from "@/services/itemLocations"
 import { useToast } from "@/composables/useToast"
 import { storeToRefs } from "pinia"
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue"
@@ -746,6 +798,7 @@ const props = defineProps({
 		type: String,
 		default: DEFAULT_CURRENCY,
 	},
+	company: String,
 })
 
 const emit = defineEmits(["item-selected"])
@@ -794,6 +847,9 @@ const userManuallySetView = ref(false) // Track if user manually changed view mo
 const lastAutoSwitchCount = ref(0)
 const showSortDropdown = ref(false) // Sort dropdown visibility
 const skipPageReset = ref(false) // Skip page reset when navigating via pagination
+const locationsByItem = ref({})
+const locationPrompt = ref(null)
+let locationLoadToken = 0
 
 // Warehouse availability dialog state
 const showWarehouseDialog = ref(false)
@@ -944,6 +1000,17 @@ watch(
 		if (newProfile) {
 			itemStore.setPosProfile(newProfile)
 		}
+	},
+	{ immediate: true },
+)
+
+watch(
+	() => [
+		props.company,
+		...(displayedItems.value || []).map((item) => item.item_code),
+	].join("|"),
+	() => {
+		loadDisplayedItemLocations()
 	},
 	{ immediate: true },
 )
@@ -1116,19 +1183,22 @@ function clearLongPress() {
  * @param {boolean} autoAdd - Auto-add flag for barcode scanning
  * @returns {boolean} - True if item was emitted, false if blocked
  */
-function selectItem(item, autoAdd = false) {
+async function selectItem(item, autoAdd = false) {
 	if (!item) return false
 
+	const resolvedItem = await resolveItemLocationForSale(item, autoAdd)
+	if (!resolvedItem) return false
+
 	// Early out-of-stock guard — full qty validation happens in cartStore.addItem()
-	if (!item.has_variants && settingsStore.shouldEnforceStockValidation() && shouldValidateItemStock(item)) {
-		const qty = item.actual_qty ?? item.stock_qty ?? 0
+	if (!resolvedItem.has_variants && settingsStore.shouldEnforceStockValidation() && shouldValidateItemStock(resolvedItem)) {
+		const qty = resolvedItem.actual_qty ?? resolvedItem.stock_qty ?? 0
 		if (qty <= 0) {
-			showError(__('"{0}" is out of stock in warehouse "{1}".', [item.item_name, item.warehouse || '']))
+			showError(__('"{0}" is out of stock in warehouse "{1}".', [resolvedItem.item_name, resolvedItem.warehouse || '']))
 			return false
 		}
 	}
 
-	emit("item-selected", item, autoAdd)
+	emit("item-selected", resolvedItem, autoAdd)
 	return true
 }
 
@@ -1152,9 +1222,130 @@ function showWarehouseAvailability(item) {
 		itemCode: item.item_code,
 		itemName: item.item_name,
 		uom: item.uom || item.stock_uom || 'Nos',
-		company: settingsStore.company
+		company: props.company
 	}
 	showWarehouseDialog.value = true
+}
+
+async function loadDisplayedItemLocations() {
+	if (!props.company || !displayedItems.value?.length) {
+		locationsByItem.value = {}
+		return
+	}
+
+	const token = ++locationLoadToken
+	const itemCodes = [...new Set(displayedItems.value.map((item) => item.item_code).filter(Boolean))]
+
+	try {
+		const result = await getItemLocationsBulk(itemCodes, props.company)
+		if (token === locationLoadToken) {
+			locationsByItem.value = result || {}
+		}
+	} catch (error) {
+		console.warn("Item location lookup unavailable", error)
+		if (token === locationLoadToken) {
+			locationsByItem.value = {}
+		}
+	}
+}
+
+function getLocationRule(item) {
+	return locationsByItem.value?.[item?.item_code] || null
+}
+
+function getPrimaryLocation(item) {
+	return getLocationRule(item)?.default_label || ""
+}
+
+function getPrimaryLocationQty(item) {
+	const locationQty = Number.parseFloat(getLocationRule(item)?.default_qty ?? 0)
+	if (Number.isFinite(locationQty) && locationQty > 0) {
+		return locationQty
+	}
+
+	const itemQty = Number.parseFloat(item?.actual_qty ?? item?.stock_qty ?? 0)
+	return Number.isFinite(itemQty) ? itemQty : 0
+}
+
+function getLocationCount(item) {
+	return getLocationRule(item)?.locations?.length || 0
+}
+
+async function resolveItemLocationForSale(item, autoAdd = false) {
+	if (!props.company || item.has_variants || !(item.is_stock_item || item.is_bundle)) {
+		return item
+	}
+
+	try {
+		const response = await resolvePosItemWarehouse(item.item_code, props.company, item.resolved_qty || 1)
+		const resolution = response
+
+		if (!resolution || (!resolution.warehouse && !resolution.requires_selection)) {
+			return item
+		}
+
+		if (resolution.requires_selection) {
+			const locations = resolution.available_locations || []
+			if (locations.length === 1) {
+				return buildItemWithLocation(item, locations[0])
+			}
+
+			locationPrompt.value = {
+				item,
+				autoAdd,
+				defaultLocation: resolution.default_location,
+				locations,
+			}
+			return null
+		}
+
+		return buildItemWithLocation(item, resolution.location || {
+			warehouse: resolution.warehouse,
+			available_qty: item.actual_qty ?? item.stock_qty ?? 0,
+		})
+	} catch (error) {
+		console.warn("Item location resolver unavailable", error)
+		return item
+	}
+}
+
+function buildItemWithLocation(item, location) {
+	if (!location?.warehouse) return item
+
+	const locationQty = Number.parseFloat(location.available_qty ?? 0)
+	const itemQty = Number.parseFloat(item.actual_qty ?? item.stock_qty ?? 0)
+
+	if ((!Number.isFinite(locationQty) || locationQty <= 0) && Number.isFinite(itemQty) && itemQty > 0) {
+		return {
+			...item,
+			pos_location_label: location.label,
+			pos_location_warehouse: location.warehouse,
+			pos_location_available_qty: 0,
+		}
+	}
+
+	const availableQty = Number.isFinite(locationQty) ? locationQty : itemQty
+
+	return {
+		...item,
+		warehouse: location.warehouse,
+		actual_qty: Number.isFinite(availableQty) ? availableQty : 0,
+		stock_qty: Number.isFinite(availableQty) ? availableQty : 0,
+		pos_location_label: location.label,
+	}
+}
+
+function chooseLocation(location) {
+	if (!locationPrompt.value) return
+
+	const item = buildItemWithLocation(locationPrompt.value.item, location)
+	const autoAdd = locationPrompt.value.autoAdd
+	closeLocationPrompt()
+	emit("item-selected", item, autoAdd)
+}
+
+function closeLocationPrompt() {
+	locationPrompt.value = null
 }
 
 // Expose methods for parent component

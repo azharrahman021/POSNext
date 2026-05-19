@@ -344,7 +344,7 @@ def get_sales_persons(pos_profile=None):
 			if frappe.db.has_column("Sales Person", "company") and company:
 				filters["company"] = company
 
-		sales_persons = frappe.get_list(
+		sales_persons = frappe.get_all(
 			"Sales Person",
 			filters=filters,
 			fields=["name", "sales_person_name", "commission_rate", "employee"],

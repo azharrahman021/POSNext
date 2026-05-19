@@ -313,6 +313,7 @@
 								ref="itemsSelectorRef"
 								:pos-profile="shiftStore.profileName"
 								:cart-items="cartStore.invoiceItems"
+								:company="shiftStore.profileCompany"
 								:currency="shiftStore.profileCurrency"
 								@item-selected="handleItemSelected"
 							/>
