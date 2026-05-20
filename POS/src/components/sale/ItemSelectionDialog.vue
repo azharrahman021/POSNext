@@ -107,28 +107,28 @@
 					<!-- Quantity Control -->
 					<div>
 						<label class="block text-sm font-medium text-gray-700 mb-2 text-start">{{ __('Quantity') }}</label>
-						<div class="w-full h-10 border border-gray-300 rounded-lg bg-white flex items-center overflow-hidden">
-							<button
-								type="button"
-								@click="decrementQuantity"
-								class="w-[40px] h-[40px] min-w-[40px] bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 font-bold text-lg transition-colors flex items-center justify-center border-e border-gray-300 touch-manipulation"
-								style="flex: 0 0 40px;"
+							<div class="w-full h-10 border border-gray-300 rounded-lg bg-white flex items-center overflow-hidden">
+								<button
+									type="button"
+									@click="decrementQuantity"
+									class="w-[40px] h-[40px] min-w-[40px] bg-gray-100 hover:bg-gray-200 active:bg-gray-300 text-gray-700 font-bold text-lg transition-colors flex items-center justify-center border-e border-gray-300 touch-manipulation"
+									style="flex: 0 0 40px;"
 							>
 								−
 							</button>
-							<div class="flex-1 h-full flex items-center justify-center px-3">
-								<input
-									ref="quantityInput"
-									v-model.number="quantity"
-									type="number"
-									min="1"
-									step="1"
-									inputmode="numeric"
-									class="w-full text-center border-0 text-sm font-semibold focus:outline-none focus:ring-0 bg-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-									@blur="validateQuantity"
-									@keydown.enter="confirm"
-								/>
-							</div>
+								<div class="flex-1 h-full flex items-center justify-center px-3">
+									<input
+										ref="quantityInput"
+										v-model.number="quantity"
+										type="number"
+										min="0.0001"
+										step="any"
+										inputmode="decimal"
+										class="w-full text-center border-0 text-sm font-semibold focus:outline-none focus:ring-0 bg-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+										@blur="validateQuantity"
+										@keydown.enter="confirm"
+									/>
+								</div>
 							<button
 								type="button"
 								@click="incrementQuantity"
@@ -302,26 +302,47 @@ const stockWarning = computed(() => {
 })
 
 /**
- * Validates quantity input ensuring it's a valid positive integer
+ * Validates quantity input ensuring it's a valid positive decimal
  */
 function validateQuantity() {
-	// Handle invalid, negative, or decimal values
-	if (!quantity.value || isNaN(quantity.value) || quantity.value < 1) {
+	// Handle invalid or negative values
+	if (!quantity.value || isNaN(quantity.value) || quantity.value <= 0) {
 		quantity.value = 1
 	} else {
-		// Round to nearest integer for UOM quantities
-		quantity.value = Math.max(1, Math.round(quantity.value))
+		// Keep decimal precision while normalizing to 4 places
+		quantity.value = Math.round(quantity.value * 10000) / 10000
 	}
+}
+
+/**
+ * Intelligently determine the step size based on current quantity
+ */
+function getSmartStep(quantityValue) {
+	if (quantityValue === Math.floor(quantityValue)) {
+		return 1
+	}
+
+	const rounded = Math.round(quantityValue * 10000) / 10000
+
+	if (Math.abs(rounded % 0.5) < 0.0001) return 0.5
+	if (Math.abs(rounded % 0.25) < 0.0001) return 0.25
+	if (Math.abs(rounded % 0.1) < 0.0001) return 0.1
+
+	return 0.01
 }
 
 // Quantity counter functions
 function incrementQuantity() {
-	quantity.value = Math.max(1, quantity.value + 1)
+	const step = getSmartStep(quantity.value)
+	quantity.value = Math.round((quantity.value + step) * 10000) / 10000
 }
 
 function decrementQuantity() {
-	if (quantity.value > 1) {
-		quantity.value = quantity.value - 1
+	const step = getSmartStep(quantity.value)
+	const newQty = Math.round((quantity.value - step) * 10000) / 10000
+
+	if (newQty > 0) {
+		quantity.value = newQty
 	}
 }
 
@@ -455,7 +476,7 @@ watch([() => props.mode, () => props.item], ([, newItem]) => {
  */
 async function loadOptions() {
 	selectedOption.value = null
-	quantity.value = props.item.resolved_qty || 1
+	quantity.value = Number.parseFloat(props.item.resolved_qty) || 1
 	selectedAttributes.value = {} // Reset attribute selection
 
 	if (props.mode === "variant") {
@@ -562,7 +583,7 @@ function confirm() {
 		// Parent can keep dialog open by switching mode (variant → UOM)
 		const option = { ...selectedOption.value }
 		if (props.mode === "uom") {
-			option.quantity = quantity.value
+			option.quantity = Number.parseFloat(quantity.value) || 1
 		}
 		emit("option-selected", option)
 	}

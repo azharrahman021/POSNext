@@ -222,6 +222,7 @@ export function useInvoice() {
 
 	// Actions
 	function addItem(item, quantity = 1) {
+		const normalizedQuantity = Number.parseFloat(quantity) || 1
 		const itemUom = item.uom || item.stock_uom
 		const existingItem = invoiceItems.value.find(
 			(i) => i.item_code === item.item_code && i.uom === itemUom,
@@ -250,7 +251,7 @@ export function useInvoice() {
 				// For serial items, quantity must match serial count
 				existingItem.quantity = allSerials.length
 			} else {
-				existingItem.quantity += quantity
+				existingItem.quantity += normalizedQuantity
 			}
 			recalculateItem(existingItem)
 
@@ -269,12 +270,12 @@ export function useInvoice() {
 				item_name: item.item_name,
 				rate: item.rate || item.price_list_rate || 0,
 				price_list_rate: item.price_list_rate || item.rate || 0,
-				quantity: quantity,
+				quantity: normalizedQuantity,
 				discount_amount: item.discount_amount || 0,
 				discount_percentage: item.discount_percentage || 0,
 				pricing_rules: item.pricing_rules || null,
 				tax_amount: 0,
-				amount: quantity * (item.rate || item.price_list_rate || 0),
+				amount: normalizedQuantity * (item.rate || item.price_list_rate || 0),
 				stock_qty: item.stock_qty || 0,
 				image: item.image,
 				uom: item.uom || item.stock_uom,

@@ -174,9 +174,11 @@ export const usePOSCartStore = defineStore("posCart", () => {
 
 	// Actions
 	function addItem(item, qty = 1, _autoAdd = false, currentProfile = null) {
+		const quantity = Number.parseFloat(qty) || 1
+
 		if (currentProfile && settingsStore.shouldEnforceStockValidation() && shouldValidateItemStock(item)) {
 			// Account for all cart rows for this item, even when they use different UOMs.
-			const requestedStockQty = getRequestedStockQtyForNewItem(item, qty)
+			const requestedStockQty = getRequestedStockQtyForNewItem(item, quantity)
 			const warehouse = item.warehouse || currentProfile.warehouse
 			const validationItem = buildStockValidationItem(item, warehouse)
 
@@ -186,7 +188,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			}
 		}
 
-		addItemToInvoice(item, qty)
+		addItemToInvoice(item, quantity)
 	}
 
 	/**
@@ -355,7 +357,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 
 	function setPendingItem(item, qty = 1, mode = "uom") {
 		pendingItem.value = item
-		pendingItemQty.value = qty
+		pendingItemQty.value = Number.parseFloat(qty) || 1
 		selectionMode.value = mode
 	}
 

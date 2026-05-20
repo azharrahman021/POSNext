@@ -2343,7 +2343,7 @@ async function handleOptionSelected(option) {
 				}
 			}
 		} else if (option.type === "uom") {
-			const qty = option.quantity || cartStore.pendingItemQty;
+			const qty = Number.parseFloat(option.quantity ?? cartStore.pendingItemQty) || 1;
 			const pricing = await cartStore.resolveUomPricing(
 				cartStore.pendingItem, option.uom, option.conversion_factor, qty
 			);
@@ -2525,11 +2525,11 @@ async function handleApplyOffer(offer) {
 function handleBatchSerialSelected(batchSerial) {
 	if (cartStore.pendingItem) {
 		// Use quantity from batchSerial if provided (for multiple serial numbers), otherwise use pendingItemQty
-		const qty = batchSerial.quantity || cartStore.pendingItemQty;
+		const qty = Number.parseFloat(batchSerial.quantity ?? cartStore.pendingItemQty) || 1;
 		const itemToAdd = {
 			...cartStore.pendingItem,
-			quantity: qty,
 			...batchSerial,
+			quantity: qty,
 		};
 		try {
 			cartStore.addItem(itemToAdd, qty, false, shiftStore.currentProfile);
