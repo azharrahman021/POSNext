@@ -346,6 +346,82 @@ def get_item_detail(item, doc=None, warehouse=None, price_list=None, company=Non
 
 
 @frappe.whitelist()
+def create_pos_item_request(
+	requested_item_name,
+	availability_type="unknown",
+	matched_item=None,
+	customer=None,
+	mobile_no=None,
+	pos_profile=None,
+	company=None,
+	warehouse=None,
+	qty=1,
+	uom=None,
+	staff_user=None,
+	notes=None,
+):
+	"""Create a POS item request record for an unavailable item."""
+	try:
+		requested_item_name = (requested_item_name or "").strip()
+		if not requested_item_name:
+			frappe.throw(_("Requested item name is required"))
+
+		valid_availability_types = {"out_of_stock", "not_in_inventory", "unknown"}
+		availability_type = (availability_type or "unknown").strip()
+		if availability_type not in valid_availability_types:
+			availability_type = "unknown"
+
+		quantity = flt(qty or 1)
+		if quantity <= 0:
+			quantity = 1
+
+		customer_name = _normalize_customer(customer)
+		staff_user = staff_user or frappe.session.user
+
+		pos_profile_doc = None
+		if pos_profile:
+			pos_profile_doc = frappe.db.get_value(
+				"POS Profile",
+				pos_profile,
+				["name", "company", "warehouse"],
+				as_dict=True,
+			)
+
+		if not company and pos_profile_doc:
+			company = pos_profile_doc.get("company")
+		if not warehouse and pos_profile_doc:
+			warehouse = pos_profile_doc.get("warehouse")
+
+		request = frappe.get_doc(
+			{
+				"doctype": "POS Item Request",
+				"requested_item_name": requested_item_name,
+				"availability_type": availability_type,
+				"matched_item": matched_item or None,
+				"customer": customer_name,
+				"mobile_no": mobile_no,
+				"pos_profile": pos_profile or None,
+				"company": company,
+				"warehouse": warehouse,
+				"qty": quantity,
+				"uom": uom,
+				"staff_user": staff_user,
+				"status": "new",
+				"notes": notes,
+			}
+		)
+		request.insert(ignore_permissions=True)
+		return {
+			"name": request.name,
+			"requested_item_name": request.requested_item_name,
+			"availability_type": request.availability_type,
+		}
+	except Exception as e:
+		frappe.log_error(frappe.get_traceback(), "Create POS Item Request Error")
+		frappe.throw(_("Error creating POS item request: {0}").format(str(e)))
+
+
+@frappe.whitelist()
 def search_by_barcode(barcode, pos_profile, customer=None):
 	"""Search item by barcode"""
 	try:

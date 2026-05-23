@@ -235,7 +235,7 @@
 
 		<!-- Initial Loading State - Show spinner while fetching items -->
 		<div v-if="loading && (!filteredItems || filteredItems.length === 0)" class="flex-1 flex items-center justify-center p-3">
-			<div class="text-center py-8">
+			<div class="text-center py-8 max-w-md">
 				<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
 				<p class="mt-3 text-xs text-gray-500">{{ __('Loading items...') }}</p>
 			</div>
@@ -266,6 +266,17 @@
 					<span v-else>{{ __('No results for {0}', [searchTerm]) }}</span>
 				</p>
 				<p v-else class="mt-2 text-xs text-gray-500">{{ __('No items available') }}</p>
+				<div class="mt-4 flex justify-center">
+					<button
+						@click="openItemRequestDialog(null, searchTerm ? 'not_in_inventory' : 'unknown', searchTerm || selectedFilterLabel || '')"
+						class="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700 active:bg-blue-800"
+					>
+						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+						</svg>
+						<span>{{ __('Request Missing Item') }}</span>
+					</button>
+				</div>
 			</div>
 		</div>
 
@@ -390,6 +401,13 @@
 								{{ getPrimaryLocation(item) }}: {{ Math.floor(getPrimaryLocationQty(item)) }}
 								<span v-if="getLocationCount(item) > 1" class="text-gray-400">+{{ getLocationCount(item) - 1 }}</span>
 							</p>
+							<button
+								v-if="(item.is_stock_item || item.is_bundle) && (item.actual_qty ?? item.stock_qty ?? 0) <= 0"
+								@click.stop="openItemRequestDialog(item, 'out_of_stock')"
+								class="mt-1 inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[9px] sm:text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 active:bg-blue-200"
+							>
+								<span>{{ __('Request') }}</span>
+							</button>
 						</div>
 					</div>
 				</div>
@@ -565,6 +583,13 @@
 							</td>
 							<td class="px-2 sm:px-3 py-2 whitespace-nowrap w-[70px] sm:w-[100px]">
 								<div class="text-xs sm:text-sm font-semibold text-blue-600">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</div>
+								<button
+									v-if="(item.is_stock_item || item.is_bundle) && (item.actual_qty ?? item.stock_qty ?? 0) <= 0"
+									@click.stop="openItemRequestDialog(item, 'out_of_stock')"
+									class="mt-1 inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[9px] sm:text-[10px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 active:bg-blue-200"
+								>
+									{{ __('Request') }}
+								</button>
 							</td>
 							<td class="px-2 sm:px-3 py-2 whitespace-nowrap w-[70px] sm:w-[100px]">
 								<!-- Stock Badge - Tap to select, long press to view warehouse availability -->
@@ -723,6 +748,118 @@
 	/>
 
 	<div
+		v-if="showItemRequestDialog"
+		class="fixed inset-0 z-[10001] flex items-center justify-center bg-gray-900/50 px-3"
+		@click.self="closeItemRequestDialog"
+	>
+		<div class="w-full max-w-lg overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
+			<div class="flex items-start justify-between gap-3 border-b border-gray-200 px-4 py-3">
+				<div>
+					<h3 class="text-sm font-semibold text-gray-900">{{ __('Track Unavailable Item') }}</h3>
+					<p class="mt-0.5 text-xs text-gray-500">{{ requestDialogSubtitle }}</p>
+				</div>
+				<button
+					@click="closeItemRequestDialog"
+					class="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+					:aria-label="__('Close')"
+				>
+					<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+					</svg>
+				</button>
+			</div>
+			<div class="space-y-3 p-4">
+				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+					<div>
+						<label class="mb-1 block text-[11px] font-medium text-gray-600">{{ __('Requested Item') }}</label>
+						<input
+							v-model="itemRequestForm.requested_item_name"
+							type="text"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+						/>
+					</div>
+					<div>
+						<label class="mb-1 block text-[11px] font-medium text-gray-600">{{ __('Availability') }}</label>
+						<select
+							v-model="itemRequestForm.availability_type"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+						>
+							<option value="out_of_stock">{{ __('Out of stock') }}</option>
+							<option value="not_in_inventory">{{ __('Not in inventory') }}</option>
+							<option value="unknown">{{ __('Unknown') }}</option>
+						</select>
+					</div>
+					<div>
+						<label class="mb-1 block text-[11px] font-medium text-gray-600">{{ __('Customer') }}</label>
+						<input
+							v-model="itemRequestForm.customer"
+							type="text"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+						/>
+					</div>
+					<div>
+						<label class="mb-1 block text-[11px] font-medium text-gray-600">{{ __('Mobile No') }}</label>
+						<input
+							v-model="itemRequestForm.mobile_no"
+							type="text"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+						/>
+					</div>
+					<div>
+						<label class="mb-1 block text-[11px] font-medium text-gray-600">{{ __('Qty') }}</label>
+						<input
+							v-model.number="itemRequestForm.qty"
+							type="number"
+							min="1"
+							step="1"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+						/>
+					</div>
+					<div>
+						<label class="mb-1 block text-[11px] font-medium text-gray-600">{{ __('UOM') }}</label>
+						<input
+							v-model="itemRequestForm.uom"
+							type="text"
+							class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+						/>
+					</div>
+				</div>
+				<div>
+					<label class="mb-1 block text-[11px] font-medium text-gray-600">{{ __('Notes') }}</label>
+					<textarea
+						v-model="itemRequestForm.notes"
+						rows="3"
+						class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+						:placeholder="__('Optional notes for follow-up')"
+					/>
+				</div>
+				<div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
+					<div class="flex flex-wrap gap-x-4 gap-y-1">
+						<span>{{ __('POS Profile') }}: <strong>{{ itemRequestForm.pos_profile || __('N/A') }}</strong></span>
+						<span>{{ __('Item') }}: <strong>{{ requestItemSummary }}</strong></span>
+					</div>
+				</div>
+			</div>
+			<div class="flex items-center justify-end gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3">
+				<button
+					@click="closeItemRequestDialog"
+					class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+				>
+					{{ __('Cancel') }}
+				</button>
+				<button
+					@click="submitItemRequest"
+					:disabled="savingItemRequest"
+					class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+				>
+					<span v-if="savingItemRequest" class="h-4 w-4 animate-spin rounded-full border-b-2 border-white"></span>
+					<span>{{ __('Save Request') }}</span>
+				</button>
+			</div>
+		</div>
+	</div>
+
+	<div
 		v-if="locationPrompt"
 		class="fixed inset-0 z-[10000] flex items-center justify-center bg-gray-900/50 px-3"
 		@click.self="closeLocationPrompt"
@@ -769,6 +906,7 @@
 <script setup>
 import LazyImage from "@/components/common/LazyImage.vue"
 import WarehouseAvailabilityDialog from "@/components/sale/WarehouseAvailabilityDialog.vue"
+import { call } from "@/utils/apiWrapper"
 import { useItemSearchStore } from "@/stores/itemSearch"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { useStock } from "@/composables/useStock"
@@ -806,7 +944,7 @@ const emit = defineEmits(["item-selected"])
 // Use composables
 const { getStockStatus } = useStock()
 const settingsStore = usePOSSettingsStore()
-const { showError, showWarning } = useToast()
+const { showError, showWarning, showSuccess } = useToast()
 const { isAnyDialogOpen } = useDialogState()
 
 // Use Pinia store
@@ -816,6 +954,8 @@ const {
 	searchTerm,
 	selectedItemGroup,
 	selectedBrand,
+	posProfile,
+	activeCustomer,
 	itemGroups,
 	brands,
 	loading,
@@ -854,6 +994,21 @@ let locationLoadToken = 0
 // Warehouse availability dialog state
 const showWarehouseDialog = ref(false)
 const warehouseDialogItem = ref(null)
+const showItemRequestDialog = ref(false)
+const savingItemRequest = ref(false)
+const itemRequestForm = ref({
+	requested_item_name: "",
+	availability_type: "unknown",
+	matched_item: "",
+	customer: "",
+	mobile_no: "",
+	pos_profile: "",
+	company: props.company || "",
+	warehouse: "",
+	qty: 1,
+	uom: "",
+	notes: "",
+})
 
 // Infinite scroll refs
 const gridScrollContainer = ref(null)
@@ -1214,6 +1369,88 @@ function handleItemClick(itemCode) {
 
 function formatCurrency(amount) {
 	return formatCurrencyUtil(Number.parseFloat(amount || 0), props.currency)
+}
+
+const requestItemSummary = computed(() => {
+	return itemRequestForm.value.matched_item
+		|| itemRequestForm.value.requested_item_name
+		|| __("Unknown")
+})
+
+const requestDialogSubtitle = computed(() => {
+	if (itemRequestForm.value.availability_type === "out_of_stock") {
+		return __("Track an item the customer wants but is currently unavailable in stock.")
+	}
+	if (itemRequestForm.value.availability_type === "not_in_inventory") {
+		return __("Track an item that is not yet in your inventory.")
+	}
+	return __("Track a customer request for an unavailable item.")
+})
+
+function getCustomerMobile(customer) {
+	if (!customer) return ""
+	return customer.mobile_no || customer.mobile || customer.phone || ""
+}
+
+function openItemRequestDialog(item = null, availabilityType = "unknown", requestedItemName = "") {
+	const customer = activeCustomer.value
+	const posProfileName = posProfile.value || props.posProfile || ""
+	const requestedName = (requestedItemName || item?.item_name || searchTerm.value || "").trim()
+
+	itemRequestForm.value = {
+		requested_item_name: requestedName,
+		availability_type: availabilityType || "unknown",
+		matched_item: item?.item_code || "",
+		customer: customer?.name || customer?.customer_name || "",
+		mobile_no: getCustomerMobile(customer),
+		pos_profile: posProfileName,
+		company: props.company || "",
+		warehouse: "",
+		qty: Number.parseFloat(item?.qty || 1) || 1,
+		uom: item?.uom || item?.stock_uom || "",
+		notes: item?.item_name ? __("Requested from POS for {0}", [item.item_name]) : "",
+	}
+	showItemRequestDialog.value = true
+}
+
+function closeItemRequestDialog() {
+	showItemRequestDialog.value = false
+	savingItemRequest.value = false
+}
+
+async function submitItemRequest() {
+	const requestedName = (itemRequestForm.value.requested_item_name || "").trim()
+	if (!requestedName) {
+		showWarning(__("Requested item name is required"))
+		return
+	}
+
+	savingItemRequest.value = true
+	try {
+		const response = await call("pos_next.api.items.create_pos_item_request", {
+			requested_item_name: requestedName,
+			availability_type: itemRequestForm.value.availability_type,
+			matched_item: itemRequestForm.value.matched_item || null,
+			customer: itemRequestForm.value.customer || null,
+			mobile_no: itemRequestForm.value.mobile_no || null,
+			pos_profile: itemRequestForm.value.pos_profile || props.posProfile || null,
+			company: itemRequestForm.value.company || props.company || null,
+			warehouse: itemRequestForm.value.warehouse || null,
+			qty: itemRequestForm.value.qty || 1,
+			uom: itemRequestForm.value.uom || null,
+			staff_user: null,
+			notes: itemRequestForm.value.notes || null,
+		})
+
+		const createdName = response?.message?.name || response?.name || requestedName
+		showSuccess(__("Item request saved: {0}", [createdName]))
+		closeItemRequestDialog()
+	} catch (error) {
+		console.error("Failed to save POS item request", error)
+		showWarning(__("Could not save the item request"))
+	} finally {
+		savingItemRequest.value = false
+	}
 }
 
 // Show warehouse availability dialog
