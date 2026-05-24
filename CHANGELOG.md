@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.14] - 2026-05-24
+
+### Changed
+- Bump POS Next version after adding the Payments & Expenses quick action.
+
 ## [1.16.13] - 2026-05-24
 
 ### Added
