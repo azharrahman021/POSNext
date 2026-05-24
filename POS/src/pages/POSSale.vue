@@ -148,6 +148,26 @@
 						<span>{{ __("Return Invoice") }}</span>
 					</button>
 					<button
+						v-if="canAccessShiftActions"
+						@click="uiStore.showCashMovementDialog = true"
+						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 flex items-center gap-3 transition-colors"
+					>
+						<svg
+							class="w-5 h-5 text-emerald-600"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M12 8c-2.5 0-4.5 1.5-4.5 3.5S9.5 15 12 15s4.5 1.5 4.5 3.5S14.5 22 12 22m0-14V4m0 18v-3"
+							/>
+						</svg>
+						<span>{{ __("Payments & Expenses") }}</span>
+					</button>
+					<button
 						v-if="canAccessShiftActions && canSwitchToDesk"
 						@click="switchToDesk"
 						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 flex items-center gap-3 transition-colors"
@@ -480,7 +500,7 @@
 			</div>
 
 			<!-- Payment Dialog -->
-		<PaymentDialog
+			<PaymentDialog
 			v-model="uiStore.showPaymentDialog"
 			:grand-total="cartStore.grandTotal"
 			:subtotal="cartStore.subtotal"
@@ -506,6 +526,14 @@
 			@show-offers="uiStore.showOffersDialog = true"
 			@show-coupon="uiStore.showCouponDialog = true"
 		/>
+
+			<!-- Cash Movements Dialog -->
+			<CashMovementDialog
+				v-model="uiStore.showCashMovementDialog"
+				:pos-profile="shiftStore.profileName"
+				:company="shiftStore.profileCompany"
+				:currency="shiftStore.profileCurrency"
+			/>
 
 			<!-- Customer Selection Dialog -->
 			<CustomerDialog
@@ -1025,6 +1053,7 @@ import WarehouseAvailabilityDialog from "@/components/sale/WarehouseAvailability
 import POSSettings from "@/components/settings/POSSettings.vue";
 import InvoiceManagement from "@/components/invoices/InvoiceManagement.vue";
 import InvoiceDetailDialog from "@/components/invoices/InvoiceDetailDialog.vue";
+import CashMovementDialog from "@/components/common/CashMovementDialog.vue";
 import { useRealtimeStock } from "@/composables/useRealtimeStock";
 import { useSessionLock } from "@/composables/useSessionLock";
 import { usePOSEvents } from "@/composables/usePOSEvents";
@@ -1576,7 +1605,8 @@ watch(
 
 		// Only reapply if customer actually changed
 		if (newCustomerName !== oldCustomerName) {
-			await itemStore.setCustomer(newCustomer);
+			// Avoid a second catalog reload when the default customer is hydrated at startup.
+			await itemStore.setCustomer(newCustomer, false);
 			await cartStore.refreshCartPricingForCustomer();
 
 			// Clear existing timer
@@ -2196,6 +2226,8 @@ async function handlePaymentCompleted(paymentData) {
 			const result = await cartStore.submitInvoice();
 
 			if (result) {
+				const checkoutStartedAt = performance.now();
+				log.info(getCheckoutTimingLabel(checkoutStartedAt, "submit complete"))
 				uiStore.clearLastOfflinePrintDoc();
 
 				// If this online checkout originated from editing a still-queued
@@ -2233,7 +2265,9 @@ async function handlePaymentCompleted(paymentData) {
 				}
 
 				// Refresh stock - Direct API (50-200ms), no Socket.IO lag!
+				log.info(getCheckoutTimingLabel(checkoutStartedAt, "stock refresh start"))
 				await stockStore.refresh(soldItemCodes, shiftStore.profileWarehouse);
+				log.info(getCheckoutTimingLabel(checkoutStartedAt, "stock refresh end"))
 
 				// Refresh invoice history cache in background (non-blocking)
 				loadInvoiceHistoryData().catch((err) =>
@@ -2242,7 +2276,7 @@ async function handlePaymentCompleted(paymentData) {
 
 				if (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint) {
 					try {
-						await handlePrintInvoice({ name: invoiceName });
+						await handlePrintInvoice({ name: invoiceName }, checkoutStartedAt);
 						showSuccess(__("Invoice {0} created and sent to printer", [invoiceName]));
 					} catch (error) {
 						log.error("Auto-print error:", error);
@@ -2958,9 +2992,18 @@ function handleViewInvoice(invoice) {
 	showInvoiceDetail.value = true;
 }
 
+function getCheckoutTimingLabel(startedAt, stage) {
+	const elapsed = Math.round(performance.now() - startedAt)
+	return `[checkout ${elapsed}ms] ${stage}`
+}
+
 // Centralized print handler - uses printInvoice.js utilities
-async function handlePrintInvoice(invoiceData) {
+async function handlePrintInvoice(invoiceData, startedAt = null) {
 	try {
+		if (startedAt) {
+			log.info(getCheckoutTimingLabel(startedAt, "print start"))
+		}
+
 		invoiceData = await hydrateLocalOnlyInvoice(invoiceData || {});
 		const offlineSnapshot = uiStore.lastOfflinePrintDoc;
 		if (
@@ -2977,16 +3020,22 @@ async function handlePrintInvoice(invoiceData) {
 			if (result.method === "browser") {
 				log.info("Used browser print fallback");
 			}
+			if (startedAt) {
+				log.info(getCheckoutTimingLabel(startedAt, "print request finished"))
+			}
 			return;
 		}
 
 		// Standard browser print path
 		if (invoiceData.items && Array.isArray(invoiceData.items)) {
-			await printInvoice(invoiceData);
+			await printInvoice(invoiceData, null, null, startedAt);
 		} else {
 			// If it's just an invoice object with name, fetch and print
 			// printInvoiceByName will automatically fetch the print format from the invoice's POS Profile
-			await printInvoiceByName(invoiceData.name);
+			await printInvoiceByName(invoiceData.name, null, null, startedAt);
+		}
+		if (startedAt) {
+			log.info(getCheckoutTimingLabel(startedAt, "print request finished"))
 		}
 	} catch (error) {
 		log.error("Error printing invoice:", error);
