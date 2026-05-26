@@ -148,6 +148,38 @@
 									{{ selectedExpenseAccount }}
 								</div>
 							</div>
+
+							<div
+								v-if="movementType === 'customer' && partyBalanceSummary"
+								class="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3"
+							>
+								<div class="flex items-center justify-between gap-3">
+									<div>
+										<div class="text-xs font-semibold uppercase tracking-wide text-amber-700">
+											{{ __('Write Off') }}
+										</div>
+										<div class="text-xs text-amber-700/80">
+											{{ __('Defaults off. Confirmation required to enable.') }}
+										</div>
+									</div>
+									<button
+										type="button"
+										@click="toggleWriteOff"
+										:class="[
+											'rounded-full px-3 py-1.5 text-xs font-semibold transition-colors border',
+											applyWriteOff
+												? 'bg-amber-500 border-amber-500 text-white'
+												: 'bg-white border-amber-300 text-amber-700 hover:bg-amber-100'
+										]"
+									>
+										{{ applyWriteOff ? __('On') : __('Off') }}
+									</button>
+								</div>
+								<div class="flex items-center justify-between gap-4 text-sm">
+									<span class="text-amber-700">{{ __('Write Off Amount') }}</span>
+									<span class="font-semibold text-amber-900">{{ formatCurrency(writeOffAmount || 0) }}</span>
+								</div>
+							</div>
 						</div>
 					</div>
 
@@ -218,12 +250,39 @@
 			</div>
 		</template>
 	</Dialog>
+
+	<Dialog v-model="writeOffConfirmVisible" :options="{ title: __('Confirm Write Off'), size: 'md' }">
+		<template #body-content>
+			<div class="space-y-3">
+				<p class="text-sm text-gray-700">
+					{{ __('This will write off the remaining balance for the current customer payment.') }}
+				</p>
+				<p class="text-sm font-semibold text-gray-900">
+					{{ __('Amount to write off: {0}', [formatCurrency(writeOffAmount || 0)]) }}
+				</p>
+				<p class="text-xs text-gray-500">
+					{{ __('Continue only if this is intended.') }}
+				</p>
+			</div>
+		</template>
+		<template #actions>
+			<div class="flex w-full gap-2">
+				<Button variant="subtle" class="flex-1" @click="cancelWriteOff">
+					{{ __('Cancel') }}
+				</Button>
+				<Button variant="solid" theme="orange" class="flex-1" @click="confirmWriteOff">
+					{{ __('Enable Write Off') }}
+				</Button>
+			</div>
+		</template>
+	</Dialog>
 </template>
 
 <script setup>
 import { Button, call } from "frappe-ui"
 import { computed, ref, watch } from "vue"
 import { useToast } from "@/composables/useToast"
+import { parseError } from "@/utils/errorHandler"
 import { formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 
 const props = defineProps({
@@ -239,6 +298,18 @@ const props = defineProps({
 	currency: {
 		type: String,
 		default: "USD",
+	},
+	writeOffAccount: {
+		type: String,
+		default: "",
+	},
+	writeOffCostCenter: {
+		type: String,
+		default: "",
+	},
+	writeOffLimit: {
+		type: Number,
+		default: 0,
 	},
 })
 
@@ -281,6 +352,8 @@ const expenseResults = ref([])
 const expenseDropdownOpen = ref(false)
 const selectedExpenseAccount = ref("")
 const expenseAutoSelecting = ref(false)
+const applyWriteOff = ref(false)
+const writeOffConfirmVisible = ref(false)
 
 let partyTimer = null
 let expenseTimer = null
@@ -289,6 +362,15 @@ const movementLabel = computed(() => {
 	if (movementType.value === "supplier") return __("Supplier Payment")
 	if (movementType.value === "expense") return __("Expense")
 	return __("Customer Payment")
+})
+
+const customerCompanyBalance = computed(() => {
+	return Number(partyBalanceSummary.value?.company_balance || 0)
+})
+
+const writeOffAmount = computed(() => {
+	if (movementType.value !== "customer" || !applyWriteOff.value) return 0
+	return Math.max(customerCompanyBalance.value - Number(amount.value || 0), 0)
 })
 
 const submitLabel = computed(() => {
@@ -323,11 +405,62 @@ function resetForm() {
 	expenseSearch.value = ""
 	expenseResults.value = []
 	selectedExpenseAccount.value = ""
+	applyWriteOff.value = false
+	writeOffConfirmVisible.value = false
 	movementType.value = "customer"
 	if (paymentMethods.value.length > 0) {
 		const defaultMethod = paymentMethods.value.find((method) => method.default)
 		modeOfPayment.value = defaultMethod?.mode_of_payment || paymentMethods.value[0].mode_of_payment
 	}
+}
+
+function toggleWriteOff() {
+	if (movementType.value !== "customer") return
+	if (applyWriteOff.value) {
+		applyWriteOff.value = false
+		return
+	}
+
+	if (!selectedParty.value || !partyBalanceSummary.value) {
+		showWarning(__("Select a customer and load the balance first"))
+		return
+	}
+
+	if (!props.writeOffAccount) {
+		showWarning(__("Write off account is not configured for this POS profile"))
+		return
+	}
+
+	if (customerCompanyBalance.value <= 0) {
+		showWarning(__("No customer balance available to write off"))
+		return
+	}
+
+	if (writeOffAmount.value <= 0) {
+		showWarning(__("There is no remaining balance to write off"))
+		return
+	}
+
+	if (props.writeOffLimit > 0 && writeOffAmount.value > props.writeOffLimit) {
+		showWarning(
+			__("Write off amount cannot exceed {0}", [
+				formatCurrency(props.writeOffLimit),
+			]),
+		)
+		return
+	}
+
+	writeOffConfirmVisible.value = true
+}
+
+function confirmWriteOff() {
+	writeOffConfirmVisible.value = false
+	applyWriteOff.value = true
+}
+
+function cancelWriteOff() {
+	writeOffConfirmVisible.value = false
+	applyWriteOff.value = false
 }
 
 async function loadDefaults() {
@@ -440,6 +573,8 @@ function selectParty(item) {
 	partySearch.value = item.value
 	partyDropdownOpen.value = false
 	partyResults.value = []
+	applyWriteOff.value = false
+	writeOffConfirmVisible.value = false
 	loadPartyBalance(item.value).catch(() => {})
 }
 
@@ -485,12 +620,16 @@ watch(movementType, () => {
 	partyBalanceLoading.value = false
 	expenseSearch.value = defaults.value.default_expense_account || ""
 	selectedExpenseAccount.value = defaults.value.default_expense_account || ""
+	applyWriteOff.value = false
+	writeOffConfirmVisible.value = false
 })
 
 watch(partySearch, (value) => {
 	if (value !== selectedParty.value) {
 		selectedParty.value = ""
 		partyBalanceSummary.value = null
+		applyWriteOff.value = false
+		writeOffConfirmVisible.value = false
 	}
 	clearTimeout(partyTimer)
 	partyTimer = setTimeout(() => {
@@ -540,6 +679,9 @@ async function submitMovement() {
 			party: movementType.value === "expense" ? null : (selectedParty.value || partySearch.value.trim()),
 			expense_account: movementType.value === "expense" ? (selectedExpenseAccount.value || expenseSearch.value.trim()) : null,
 			cost_center: defaults.value.cost_center || "",
+			write_off_amount: movementType.value === "customer" && applyWriteOff.value ? Number(writeOffAmount.value || 0) : 0,
+			write_off_account: movementType.value === "customer" && applyWriteOff.value ? props.writeOffAccount : "",
+			write_off_cost_center: movementType.value === "customer" && applyWriteOff.value ? (props.writeOffCostCenter || defaults.value.cost_center || "") : "",
 		}
 
 		const result = await call("pos_next.api.cash_movements.create_cash_movement", payload)
@@ -548,7 +690,8 @@ async function submitMovement() {
 		emit("saved", data)
 		show.value = false
 	} catch (error) {
-		errorMessage.value = error.message || __("Failed to save movement")
+		const parsed = parseError(error)
+		errorMessage.value = parsed.message || error.message || __("Failed to save movement")
 		showError(__("Unable to save movement"), errorMessage.value)
 	} finally {
 		submitting.value = false

@@ -534,6 +534,9 @@
 				:pos-profile="shiftStore.profileName"
 				:company="shiftStore.profileCompany"
 				:currency="shiftStore.profileCurrency"
+				:write-off-account="shiftStore.writeOffAccount"
+				:write-off-cost-center="shiftStore.writeOffCostCenter"
+				:write-off-limit="shiftStore.writeOffLimit"
 				@saved="handleCashMovementSaved"
 			/>
 

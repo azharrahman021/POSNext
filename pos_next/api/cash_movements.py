@@ -143,6 +143,25 @@ def _resolve_account_details(account: str, posting_date: str, cost_center: str |
 	}
 
 
+def _resolve_write_off_details(
+	pos_profile: str,
+	write_off_account: str | None = None,
+	write_off_cost_center: str | None = None,
+) -> dict:
+	details = frappe.db.get_value(
+		"POS Profile",
+		pos_profile,
+		["write_off_account", "write_off_cost_center", "write_off_limit"],
+		as_dict=True,
+	) or {}
+
+	return {
+		"write_off_account": write_off_account or details.get("write_off_account"),
+		"write_off_cost_center": write_off_cost_center or details.get("write_off_cost_center"),
+		"write_off_limit": flt(details.get("write_off_limit") or 0),
+	}
+
+
 @frappe.whitelist()
 def get_cash_movement_defaults(company: str):
 	if not company:
@@ -248,6 +267,9 @@ def create_cash_movement(
 	party: str | None = None,
 	expense_account: str | None = None,
 	cost_center: str | None = None,
+	write_off_amount: float = 0,
+	write_off_account: str | None = None,
+	write_off_cost_center: str | None = None,
 	reference_no: str | None = None,
 	remarks: str | None = None,
 	posting_date: str | None = None,
@@ -313,6 +335,29 @@ def create_cash_movement(
 			pe.paid_to_account_currency = party_account_details.get("currency")
 			pe.paid_to_account_balance = party_account_details.get("balance")
 			pe.paid_to_account_type = party_account_details.get("account_type")
+
+		write_off_amount = flt(write_off_amount)
+		if write_off_amount > 0:
+			write_off_details = _resolve_write_off_details(
+				pos_profile,
+				write_off_account=write_off_account,
+				write_off_cost_center=write_off_cost_center,
+			)
+			if write_off_details.get("write_off_limit") > 0 and write_off_amount > write_off_details.get("write_off_limit"):
+				frappe.throw(
+					_("Write-off amount cannot exceed {0}").format(write_off_details.get("write_off_limit"))
+				)
+			if not write_off_details.get("write_off_account"):
+				frappe.throw(_("Write-off account is required"))
+			pe.write_off_difference_amount = write_off_amount
+			pe.append(
+				"deductions",
+				{
+					"account": write_off_details.get("write_off_account"),
+					"cost_center": write_off_details.get("write_off_cost_center") or cost_center,
+					"amount": write_off_amount,
+				},
+			)
 
 		pe.setup_party_account_field()
 		pe.set_missing_values()
