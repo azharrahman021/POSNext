@@ -449,6 +449,55 @@ export async function printInvoiceByName(invoiceName, printFormat = null, letter
 }
 
 /**
+ * Print any submitted server document by doctype + name.
+ * Uses the server print renderer so custom formats like Payment Entry receipts
+ * can be reused without rebuilding a local HTML template.
+ */
+export async function printDocumentByName(doctype, docName, printFormat = null, letterhead = null) {
+	if (!doctype || !docName) throw new Error("Invalid document data")
+
+	const printWindow = openPrintWindow()
+	printWindow.document.open()
+	printWindow.document.write(
+		`<!DOCTYPE html><html><body>${__("Preparing print...")}</body></html>`,
+	)
+	printWindow.document.close()
+
+	const formatsToTry = printFormat ? [printFormat, null] : [null]
+	let lastError = null
+
+	for (const candidateFormat of formatsToTry) {
+		try {
+			const payload = {
+				doc: doctype,
+				name: docName,
+				no_letterhead: letterhead ? 0 : 1,
+				_lang: "en",
+				trigger_print: 1,
+			}
+			if (candidateFormat) payload.print_format = candidateFormat
+			if (letterhead) payload.letterhead = letterhead
+
+			const result = await call("frappe.www.printview.get_html_and_style", payload)
+			const html = result?.html || result?.message?.html
+			const style = result?.style || result?.message?.style || ""
+			if (!html) throw new Error("Failed to get print HTML from server")
+			return writePrintHTML(printWindow, { name: docName }, html, style)
+		} catch (error) {
+			lastError = error
+			if (candidateFormat) {
+				log.warn("Document print format failed, retrying with default print:", error?.message || error)
+				continue
+			}
+			log.error("Document print failed:", error)
+			throw error
+		}
+	}
+
+	throw lastError || new Error("Document print failed")
+}
+
+/**
  * Render an unsaved POS draft through the POS Profile's configured Frappe
  * print format. Falls back to the local receipt when server rendering is not
  * possible for the selected custom format.

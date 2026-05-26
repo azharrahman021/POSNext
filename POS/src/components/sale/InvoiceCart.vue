@@ -208,29 +208,6 @@
 							/>
 						</div>
 
-						<!-- Quick Create Customer Button -->
-						<button
-							type="button"
-							@click="createNewCustomer"
-							class="flex items-center justify-center w-10 h-10 bg-green-500 hover:bg-green-600 active:bg-green-700 rounded-xl text-white transition-colors shadow-sm hover:shadow touch-manipulation flex-shrink-0"
-							:title="__('Create new customer')"
-							:aria-label="__('Create new customer')"
-						>
-							<svg
-								class="w-5 h-5"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-								stroke-width="2"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
-								/>
-							</svg>
-						</button>
-
 						<!-- Document Type Toggle (Sales Invoice / Sales Order) -->
 						<div
 							v-if="settingsStore.allowSalesOrder"
@@ -709,18 +686,19 @@
 						}}</span>
 					</button>
 
-					<!-- Create Customer -->
+					<!-- Payment Entry -->
 					<button
 						type="button"
-						@click="$emit('create-customer', '')"
-						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 active:bg-green-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
-						:title="__('Create new customer')"
+						@click="openPaymentsAndExpenses"
+						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 active:bg-blue-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
+						:title="__('Payment Entry')"
+						:aria-label="__('Payment Entry')"
 					>
 						<div
-							class="w-9 h-9 sm:w-10 sm:h-10 bg-green-50 rounded-full flex items-center justify-center mb-2 group-hover:bg-green-100 transition-colors"
+							class="w-9 h-9 sm:w-10 sm:h-10 bg-blue-50 rounded-full flex items-center justify-center mb-2 group-hover:bg-blue-100 transition-colors"
 						>
 							<svg
-								class="w-5 h-5 text-green-600"
+								class="w-5 h-5 text-blue-600"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"
@@ -729,12 +707,12 @@
 									stroke-linecap="round"
 									stroke-linejoin="round"
 									stroke-width="2"
-									d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+									d="M12 8c-2.5 0-4.5 1.5-4.5 3.5S9.5 15 12 15s4.5 1.5 4.5 3.5S14.5 22 12 22m0-14V4m0 18v-3"
 								/>
 							</svg>
 						</div>
 						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
-							__("Create Customer")
+							__("Payment Entry")
 						}}</span>
 					</button>
 				</div>
@@ -1364,6 +1342,7 @@ const emit = defineEmits([
 	"show-history", // () - Show invoice history
 	"show-return", // () - Open return invoice dialog
 	"close-shift", // () - Close current shift
+	"show-payments-expenses", // () - Open payments and expenses dialog
 	// "create-sales-order", // () - Create Sales Order // Removed as per instruction
 ]);
 
@@ -1712,17 +1691,8 @@ async function clearCustomer() {
 	}
 }
 
-/**
- * Open customer creation dialog with current search text.
- * Pre-fills the new customer name with the search query.
- */
-function createNewCustomer() {
-	const searchValue = customerSearch.value;
-	// Close dropdown immediately
-	customerSearch.value = "";
-	customerSearchFocused.value = false;
-	// Emit event to open customer creation dialog
-	emit("create-customer", searchValue);
+function openPaymentsAndExpenses() {
+	emit("show-payments-expenses");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

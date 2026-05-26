@@ -5,11 +5,13 @@ This module relies on Frappe's fixture system for:
 - Custom fields (custom_field.json)
 - Roles (role.json)
 - Custom DocPerm (custom_docperm.json)
-- Print formats (print_format.json)
 
-The fixtures are defined in hooks.py and synced automatically during install/migrate.
-This module handles post-fixture tasks like setting defaults and clearing cache.
+This module also creates app-managed print formats during install/migrate so
+the live site gets the same receipt templates as the repository source.
 """
+import json
+import os
+
 import frappe
 import logging
 
@@ -24,6 +26,7 @@ def after_install():
 
 		# Setup default print format for POS Profiles
 		setup_default_print_format()
+		setup_payment_entry_print_format()
 
 		# Clear cache to ensure changes take effect
 		frappe.clear_cache()
@@ -45,6 +48,7 @@ def after_migrate():
 	try:
 		# Setup default print format
 		setup_default_print_format(quiet=True)
+		setup_payment_entry_print_format(quiet=True)
 
 		# Clear cache
 		frappe.clear_cache()
@@ -106,6 +110,52 @@ def setup_default_print_format(quiet=False):
 		log_message(f"Error setting up default print format: {str(e)}", level="error")
 		frappe.log_error(
 			title="Default Print Format Setup Error",
+			message=frappe.get_traceback()
+		)
+
+
+def setup_payment_entry_print_format(quiet=False):
+	"""Create the POS Next Payment Receipt print format if it does not exist."""
+	format_name = "POS Next Payment Receipt"
+	if frappe.db.exists("Print Format", format_name):
+		return
+
+	template_path = os.path.join(
+		os.path.dirname(__file__),
+		"pos_next",
+		"print_format",
+		"payment_entry_receipt",
+		"payment_entry_receipt.html",
+	)
+
+	try:
+		with open(template_path, "r", encoding="utf-8") as handle:
+			html = handle.read()
+
+		doc = frappe.get_doc(
+			{
+				"doctype": "Print Format",
+				"name": format_name,
+				"module": "POS Next",
+				"doc_type": "Payment Entry",
+				"custom_format": 1,
+				"print_format_type": "Jinja",
+				"disabled": 0,
+				"standard": "No",
+				"default_print_language": "en",
+				"font_size": 12,
+				"raw_printing": 0,
+				"show_section_headings": 0,
+				"html": html,
+			}
+		)
+		doc.insert(ignore_permissions=True)
+		if not quiet:
+			log_message(f"Created print format: {format_name}", level="success")
+	except Exception as e:
+		log_message(f"Error setting up payment entry print format: {str(e)}", level="error")
+		frappe.log_error(
+			title="Payment Entry Print Format Setup Error",
 			message=frappe.get_traceback()
 		)
 

@@ -200,6 +200,11 @@ scheduler_events = {
 	"hourly": [
 		"pos_next.tasks.branding_monitor.monitor_branding_integrity",
 	],
+	"cron": {
+		"0 8 * * *": [
+			"pos_next.tasks.pos_item_request_summary.send_daily_pos_item_request_summary",
+		],
+	},
 	"daily": [
 		"pos_next.tasks.cleanup_expired_promotions.cleanup_expired_promotions",
 		"pos_next.tasks.branding_monitor.validate_all_active_sessions",

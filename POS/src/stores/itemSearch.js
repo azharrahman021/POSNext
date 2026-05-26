@@ -2080,10 +2080,10 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		}
 
 		activeCustomer.value = customer || null
-		serverDataFresh.value = false
-		clearBaseCache()
 
 		if (reloadItems && posProfile.value && !isOffline()) {
+			serverDataFresh.value = false
+			clearBaseCache()
 			await loadAllItems(posProfile.value, true)
 		}
 	}

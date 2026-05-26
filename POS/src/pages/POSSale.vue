@@ -415,6 +415,7 @@
 								@show-drafts="openDraftDialog"
 								@show-history="openHistoryDialog"
 								@show-return="openReturnDialog"
+								@show-payments-expenses="uiStore.showCashMovementDialog = true"
 								@close-shift="handleCloseShift"
 							/>
 						</div>
@@ -533,6 +534,7 @@
 				:pos-profile="shiftStore.profileName"
 				:company="shiftStore.profileCompany"
 				:currency="shiftStore.profileCurrency"
+				@saved="handleCashMovementSaved"
 			/>
 
 			<!-- Customer Selection Dialog -->
@@ -1067,6 +1069,7 @@ import { cacheOfflineReceiptPayload } from "@/utils/offline/offlineReceiptCache"
 import { cacheInvoiceHistory, getCachedInvoiceHistory } from "@/utils/offline/sync";
 import {
 	hydrateLocalOnlyInvoice,
+	printDocumentByName,
 	printInvoice,
 	printInvoiceByName,
 	printWithSilentFallback,
@@ -2016,6 +2019,23 @@ function handleCreateCustomer(searchValue) {
 	editCustomer.value = null; // Clear edit mode
 	uiStore.setInitialCustomerName(searchValue || "");
 	uiStore.showCreateCustomerDialog = true;
+}
+
+async function handleCashMovementSaved(movementDoc) {
+	if (!movementDoc?.doctype || !movementDoc?.name) return
+
+	uiStore.showCashMovementDialog = false
+
+	try {
+		const printFormat =
+			movementDoc.doctype === "Payment Entry" ? "POS Next Payment Receipt" : null
+		await printDocumentByName(movementDoc.doctype, movementDoc.name, printFormat)
+	} catch (error) {
+		log.warn("Cash movement print failed:", error)
+		showWarning(
+			__("Saved {0} {1}, but print failed", [movementDoc.doctype, movementDoc.name]),
+		)
+	}
 }
 
 function handleEditCustomer(customer) {

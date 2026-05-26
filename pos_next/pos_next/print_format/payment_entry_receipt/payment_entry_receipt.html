@@ -1,0 +1,218 @@
+<style>
+	@page {
+		size: 80mm auto;
+		margin: 0mm;
+	}
+	body {
+		font-family: 'DejaVu Sans', 'Arial', sans-serif;
+		width: 80mm;
+		max-width: 80mm;
+		margin: 0 auto;
+		padding: 10px;
+		font-size: 11px;
+		line-height: 1.4;
+	}
+	.text-center { text-align: center; }
+	.bold { font-weight: bold; }
+	.divider {
+		border-top: 1px dashed #333;
+		margin: 12px 0;
+		padding: 0;
+	}
+	.row {
+		display: table;
+		width: 100%;
+		margin: 4px 0;
+	}
+	.row > span:first-child {
+		display: table-cell;
+		text-align: left;
+		width: 60%;
+	}
+	.row > span:last-child {
+		display: table-cell;
+		text-align: right;
+		width: 40%;
+	}
+	.info {
+		font-size: 10px;
+		line-height: 1.5;
+	}
+	.section-title {
+		font-size: 11px;
+		font-weight: bold;
+		margin-bottom: 6px;
+	}
+	.ref-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 10px;
+	}
+	.ref-table th,
+	.ref-table td {
+		padding: 3px 0;
+		border-bottom: 1px solid #ddd;
+		vertical-align: top;
+	}
+	.ref-table th {
+		text-align: left;
+		font-size: 9px;
+		color: #555;
+		text-transform: uppercase;
+	}
+	.total-row {
+		font-size: 14px;
+		font-weight: bold;
+		border-top: 2px solid #000;
+		padding-top: 8px;
+		margin-top: 8px;
+	}
+	.note {
+		font-size: 9px;
+		color: #666;
+	}
+	.footer {
+		border-top: 2px solid #000;
+		margin-top: 15px;
+		padding-top: 10px;
+		text-align: center;
+		font-size: 10px;
+	}
+	@media print {
+		body {
+			width: 80mm;
+			max-width: 80mm;
+			padding: 5mm;
+		}
+	}
+</style>
+
+{%- set currency = doc.paid_to_account_currency or doc.paid_from_account_currency or frappe.db.get_value('Company', doc.company, 'default_currency') -%}
+{%- set currency_symbol = frappe.db.get_value('Currency', currency, 'symbol') or currency -%}
+
+<div class="text-center bold" style="font-size: 16px; margin-bottom: 8px;">{{ doc.company }}</div>
+<div class="text-center" style="font-size: 11px; margin-bottom: 12px;">{{ doc.select_print_heading or _('PAYMENT RECEIPT') }}</div>
+
+<div class="info" style="margin-bottom: 12px;">
+	<div><b>{{ _('Receipt No') }}:</b> {{ doc.name }}</div>
+	<div><b>{{ _('Date') }}:</b> {{ doc.get_formatted('posting_date') }} {{ (doc.posting_time|string).split('.')[0] if doc.posting_time else '' }}</div>
+	<div><b>{{ _('Payment Type') }}:</b> {{ doc.payment_type }}</div>
+	{%- if doc.party_type -%}
+	<div><b>{{ _('Party Type') }}:</b> {{ doc.party_type }}</div>
+	{%- endif -%}
+	{%- if doc.party_name -%}
+	<div><b>{{ _('Party Name') }}:</b> {{ doc.party_name }}</div>
+	{%- endif -%}
+	{%- if doc.reference_no -%}
+	<div><b>{{ _('Reference No') }}:</b> {{ doc.reference_no }}</div>
+	{%- endif -%}
+	{%- if doc.reference_date -%}
+	<div><b>{{ _('Reference Date') }}:</b> {{ doc.get_formatted('reference_date') }}</div>
+	{%- endif -%}
+	{%- if doc.payment_type == 'Internal Transfer' and doc.paid_from and doc.paid_to -%}
+	<div><b>{{ _('From') }}:</b> {{ doc.paid_from }}</div>
+	<div><b>{{ _('To') }}:</b> {{ doc.paid_to }}</div>
+	{%- elif doc.payment_type == 'Receive' and doc.paid_to -%}
+	<div><b>{{ _('Account') }}:</b> {{ doc.paid_to }}</div>
+	{%- elif doc.payment_type == 'Pay' and doc.paid_from -%}
+	<div><b>{{ _('Account') }}:</b> {{ doc.paid_from }}</div>
+	{%- endif -%}
+</div>
+
+<div class="divider"></div>
+
+{%- if doc.references -%}
+<div class="section-title">{{ _('References') }}</div>
+<table class="ref-table">
+	<thead>
+		<tr>
+			<th>{{ _('Reference') }}</th>
+			<th class="text-right">{{ _('Amount') }}</th>
+		</tr>
+	</thead>
+	<tbody>
+		{%- for ref in doc.references -%}
+		<tr>
+			<td>
+				{{ ref.reference_doctype }} {{ ref.reference_name }}
+				{%- if ref.remarks -%}
+					<div class="note">{{ ref.remarks }}</div>
+				{%- endif -%}
+			</td>
+			<td class="text-right">{{ currency_symbol }} {{ "%.2f"|format(ref.allocated_amount or 0) }}</td>
+		</tr>
+		{%- endfor -%}
+	</tbody>
+</table>
+<div class="divider"></div>
+{%- endif -%}
+
+<div class="row total-row">
+	<span>
+		{%- if doc.payment_type == 'Receive' -%}
+			{{ _('Received Amount') }}
+		{%- elif doc.payment_type == 'Internal Transfer' -%}
+			{{ _('Transferred Amount') }}
+		{%- else -%}
+			{{ _('Paid Amount') }}
+		{%- endif -%}
+	</span>
+	<span>
+		{%- if doc.payment_type == 'Receive' -%}
+			{{ currency_symbol }} {{ "%.2f"|format(doc.received_amount or 0) }}
+		{%- elif doc.payment_type == 'Internal Transfer' -%}
+			{{ currency_symbol }} {{ "%.2f"|format(doc.paid_amount or 0) }}
+		{%- else -%}
+			{{ currency_symbol }} {{ "%.2f"|format(doc.paid_amount or 0) }}
+		{%- endif -%}
+	</span>
+</div>
+
+{%- if doc.payment_type == 'Internal Transfer' and doc.received_amount -%}
+<div class="row" style="font-size: 11px;">
+	<span>{{ _('Received') }}</span>
+	<span>{{ currency_symbol }} {{ "%.2f"|format(doc.received_amount or 0) }}</span>
+</div>
+{%- endif -%}
+
+{%- if doc.unallocated_amount and doc.unallocated_amount > 0 -%}
+<div class="row" style="font-size: 11px; color: #dc3545;">
+	<span>{{ _('Unallocated') }}</span>
+	<span>{{ currency_symbol }} {{ "%.2f"|format(doc.unallocated_amount or 0) }}</span>
+</div>
+{%- endif -%}
+
+{%- if doc.difference_amount and doc.difference_amount != 0 -%}
+<div class="row" style="font-size: 11px;">
+	<span>{{ _('Difference') }}</span>
+	<span>{{ currency_symbol }} {{ "%.2f"|format(doc.difference_amount or 0) }}</span>
+</div>
+{%- endif -%}
+
+{%- if doc.write_off_difference_amount and doc.write_off_difference_amount != 0 -%}
+<div class="row" style="font-size: 11px;">
+	<span>{{ _('Write Off') }}</span>
+	<span>{{ currency_symbol }} {{ "%.2f"|format(doc.write_off_difference_amount or 0) }}</span>
+</div>
+{%- endif -%}
+
+{%- if doc.deductions -%}
+<div class="divider"></div>
+<div class="section-title">{{ _('Deductions') }}</div>
+{%- for row in doc.deductions -%}
+<div class="row" style="font-size: 10px;">
+	<span>{{ row.account }}</span>
+	<span>{{ currency_symbol }} {{ "%.2f"|format(row.amount or 0) }}</span>
+</div>
+{%- endfor -%}
+{%- endif -%}
+
+{%- if doc.remarks or doc.custom_remarks -%}
+<div class="divider"></div>
+<div class="note">{{ doc.remarks or doc.custom_remarks }}</div>
+{%- endif -%}
+
+<div class="footer">
+	<div style="margin-bottom: 4px; font-size: 11px;">{{ _('Thank you for your payment.') }}</div>
+	<div style="font-size: 8px; color: #888;">Powered by POS Next</div>
+</div>

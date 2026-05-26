@@ -95,6 +95,24 @@
 								<div v-if="selectedParty" class="mt-2 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
 									{{ selectedParty }}
 								</div>
+								<div v-if="partyBalanceLoading" class="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-3 text-sm text-blue-700">
+									{{ __('Loading balance...') }}
+								</div>
+								<div v-else-if="partyBalanceSummary" class="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-3">
+									<div class="text-xs font-semibold uppercase tracking-wide text-blue-600">
+										{{ __('Balance Snapshot') }}
+									</div>
+									<div class="mt-2 space-y-2 text-sm">
+										<div class="flex items-center justify-between gap-4">
+											<span class="text-blue-700">{{ __('Current Company') }}</span>
+											<span class="font-semibold text-blue-900">{{ formatCurrency(partyBalanceSummary.company_balance || 0) }}</span>
+										</div>
+										<div class="flex items-center justify-between gap-4">
+											<span class="text-blue-700">{{ __('All Companies') }}</span>
+											<span class="font-semibold text-blue-900">{{ formatCurrency(partyBalanceSummary.all_company_balance || 0) }}</span>
+										</div>
+									</div>
+								</div>
 							</div>
 
 							<div v-else>
@@ -255,11 +273,14 @@ const partySearch = ref("")
 const partyResults = ref([])
 const partyDropdownOpen = ref(false)
 const selectedParty = ref("")
+const partyBalanceSummary = ref(null)
+const partyBalanceLoading = ref(false)
 
 const expenseSearch = ref("")
 const expenseResults = ref([])
 const expenseDropdownOpen = ref(false)
 const selectedExpenseAccount = ref("")
+const expenseAutoSelecting = ref(false)
 
 let partyTimer = null
 let expenseTimer = null
@@ -271,8 +292,8 @@ const movementLabel = computed(() => {
 })
 
 const submitLabel = computed(() => {
-	if (movementType.value === "expense") return __("Record Expense")
-	return __("Save Payment")
+	if (movementType.value === "expense") return __("Submit")
+	return __("Submit")
 })
 
 const canSubmit = computed(() => {
@@ -297,6 +318,8 @@ function resetForm() {
 	partySearch.value = ""
 	partyResults.value = []
 	selectedParty.value = ""
+	partyBalanceSummary.value = null
+	partyBalanceLoading.value = false
 	expenseSearch.value = ""
 	expenseResults.value = []
 	selectedExpenseAccount.value = ""
@@ -358,6 +381,29 @@ async function searchParties(query) {
 	}))
 }
 
+async function loadPartyBalance(partyName) {
+	if (!partyName || movementType.value === "expense") {
+		partyBalanceSummary.value = null
+		return
+	}
+
+	partyBalanceLoading.value = true
+	try {
+		const result = await call("pos_next.api.cash_movements.get_party_balance_summary", {
+			company: props.company,
+			party_type: movementType.value === "supplier" ? "Supplier" : "Customer",
+			party: partyName,
+			posting_date: postingDate.value,
+			cost_center: defaults.value.cost_center || "",
+		})
+		partyBalanceSummary.value = result?.message || result || null
+	} catch (error) {
+		partyBalanceSummary.value = null
+	} finally {
+		partyBalanceLoading.value = false
+	}
+}
+
 async function searchExpenseAccounts(query) {
 	const result = await call("pos_next.api.cash_movements.search_expense_accounts", {
 		company: props.company,
@@ -368,7 +414,25 @@ async function searchExpenseAccounts(query) {
 	expenseResults.value = rows.map((row) => ({
 		name: row.name,
 		account_name: row.account_name,
+		score: row.score || 0,
 	}))
+
+	const normalizedQuery = (query || "").trim().toLowerCase()
+	const topMatch = expenseResults.value[0]
+	if (
+		!expenseAutoSelecting.value &&
+		movementType.value === "expense" &&
+		topMatch &&
+		normalizedQuery.length >= 3 &&
+		topMatch.score >= 90 &&
+		(topMatch.score >= (expenseResults.value[1]?.score || 0) + 15 || expenseResults.value.length === 1)
+	) {
+		expenseAutoSelecting.value = true
+		selectExpenseAccount(topMatch)
+		setTimeout(() => {
+			expenseAutoSelecting.value = false
+		}, 0)
+	}
 }
 
 function selectParty(item) {
@@ -376,6 +440,7 @@ function selectParty(item) {
 	partySearch.value = item.value
 	partyDropdownOpen.value = false
 	partyResults.value = []
+	loadPartyBalance(item.value).catch(() => {})
 }
 
 function selectExpenseAccount(item) {
@@ -416,6 +481,8 @@ watch(movementType, () => {
 	partySearch.value = ""
 	partyResults.value = []
 	selectedParty.value = ""
+	partyBalanceSummary.value = null
+	partyBalanceLoading.value = false
 	expenseSearch.value = defaults.value.default_expense_account || ""
 	selectedExpenseAccount.value = defaults.value.default_expense_account || ""
 })
@@ -423,6 +490,7 @@ watch(movementType, () => {
 watch(partySearch, (value) => {
 	if (value !== selectedParty.value) {
 		selectedParty.value = ""
+		partyBalanceSummary.value = null
 	}
 	clearTimeout(partyTimer)
 	partyTimer = setTimeout(() => {
@@ -433,8 +501,15 @@ watch(partySearch, (value) => {
 	}, 250)
 })
 
+watch(postingDate, () => {
+	if (selectedParty.value) {
+		loadPartyBalance(selectedParty.value).catch(() => {})
+	}
+})
+
 watch(expenseSearch, (value) => {
 	if (movementType.value !== "expense") return
+	if (expenseAutoSelecting.value) return
 	if (value !== selectedExpenseAccount.value) {
 		selectedExpenseAccount.value = ""
 	}

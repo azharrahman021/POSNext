@@ -788,6 +788,12 @@ def update_invoice(data):
         # Create or update invoice
         if data.get("name"):
             invoice_doc = frappe.get_doc(doctype, data.get("name"))
+            previous_customer = invoice_doc.get("customer")
+            next_customer = data.get("customer")
+            if next_customer and next_customer != previous_customer:
+                for fieldname in ("customer_address", "shipping_address_name", "contact_person", "address_display", "shipping_address", "billing_address", "billing_address_display"):
+                    if invoice_doc.meta.has_field(fieldname):
+                        invoice_doc.set(fieldname, None)
             invoice_doc.update(data)
         else:
             invoice_doc = frappe.get_doc(data)

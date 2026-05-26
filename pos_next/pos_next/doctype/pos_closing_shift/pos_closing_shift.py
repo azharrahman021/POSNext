@@ -66,6 +66,54 @@ class POSClosingShift(Document):
                 title=_("Invalid Opening Entry"),
             )
         self.update_payment_reconciliation()
+        self.ensure_no_draft_invoices()
+
+    def ensure_no_draft_invoices(self):
+        """Block shift closing while draft invoices still exist."""
+        draft_names = set()
+        doctype = "Sales Invoice"
+
+        if frappe.db.has_column(doctype, "pos_profile") and self.pos_profile:
+            draft_names.update(
+                frappe.get_all(
+                    doctype,
+                    filters={
+                        "docstatus": 0,
+                        "is_pos": 1,
+                        "pos_profile": self.pos_profile,
+                    },
+                    pluck="name",
+                )
+            )
+
+        if self.pos_opening_shift and frappe.db.has_column(doctype, "posa_pos_opening_shift"):
+            draft_names.update(
+                frappe.get_all(
+                    doctype,
+                    filters={
+                        "docstatus": 0,
+                        "is_pos": 1,
+                        "posa_pos_opening_shift": self.pos_opening_shift,
+                    },
+                    pluck="name",
+                )
+            )
+
+        if not draft_names:
+            return
+
+        draft_list = ", ".join(sorted(draft_names)[:5])
+        extra_count = len(draft_names) - 5
+        if extra_count > 0:
+            draft_list = f"{draft_list} {_('and')} {extra_count} {_('more')}"
+
+        frappe.throw(
+            _(
+                "Cannot close shift while {0} draft invoices exist. "
+                "Delete or submit them first: {1}"
+            ).format(len(draft_names), draft_list),
+            title=_("Draft Invoices Pending"),
+        )
 
     def update_payment_reconciliation(self):
         # update the difference values in Payment Reconciliation child table
@@ -78,7 +126,6 @@ class POSClosingShift(Document):
         opening_entry = frappe.get_doc("POS Opening Shift", self.pos_opening_shift)
         opening_entry.pos_closing_shift = self.name
         opening_entry.set_status()
-        self.delete_draft_invoices()
         opening_entry.save()
         # link invoices with this closing shift so ERPNext can block edits
         self._set_closing_entry_invoices()

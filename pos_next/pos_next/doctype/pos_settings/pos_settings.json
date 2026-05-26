@@ -56,6 +56,8 @@
   "section_break_printing",
   "allow_print_last_invoice",
   "silent_print",
+  "section_break_notifications",
+  "daily_item_request_telegram_user",
   "section_break_delivery",
   "use_delivery_charges",
   "auto_set_delivery_charges",
@@ -430,6 +432,19 @@
    "fieldname": "silent_print",
    "fieldtype": "Check",
    "label": "Enable Silent Print"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_break_notifications",
+   "fieldtype": "Section Break",
+   "label": "Notifications"
+  },
+  {
+   "description": "Telegram User Settings record for the group chat that receives the daily POS item request summary at 8:00 AM.",
+   "fieldname": "daily_item_request_telegram_user",
+   "fieldtype": "Link",
+   "label": "Daily Item Request Telegram Group",
+   "options": "Telegram User Settings"
   },
   {
    "collapsible": 1,
