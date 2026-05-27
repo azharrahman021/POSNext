@@ -1,7 +1,7 @@
 {
 	"name": "pos-next-frontend",
 	"private": true,
-	"version": "1.16.16",
+	"version": "1.16.17",
 	"type": "module",
 	"engines": {
 		"node": ">=20.0.0"
