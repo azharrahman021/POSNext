@@ -4,6 +4,10 @@
 import unittest
 from unittest.mock import Mock, patch
 
+import frappe
+
+import pos_next.api.cash_movements as cash_movements_module
+
 from pos_next.api.cash_movements import (
 	create_cash_movement,
 	get_party_balance_summary,
@@ -96,6 +100,7 @@ class TestCashMovementsAPI(unittest.TestCase):
 		self.assertEqual(result["name"], "PE-TEST")
 		self.assertEqual(pe.paid_from, "Debtors - THS")
 		self.assertEqual(pe.paid_to, "Cash - THS")
+		self.assertEqual(pe.reference_date, "2026-05-26")
 		self.assertEqual(pe.paid_from_account_currency, "INR")
 		self.assertEqual(pe.paid_to_account_currency, "INR")
 		self.assertEqual(pe.paid_from_account_type, "Receivable")
@@ -150,6 +155,7 @@ class TestCashMovementsAPI(unittest.TestCase):
 		self.assertEqual(result["name"], "PE-TEST-2")
 		self.assertEqual(pe.paid_from, "Cash - THS")
 		self.assertEqual(pe.paid_to, "Creditors - THS")
+		self.assertEqual(pe.reference_date, "2026-05-26")
 		self.assertEqual(pe.paid_from_account_currency, "INR")
 		self.assertEqual(pe.paid_to_account_currency, "INR")
 		self.assertEqual(pe.paid_from_account_type, "Cash")
@@ -225,3 +231,55 @@ class TestCashMovementsAPI(unittest.TestCase):
 		pe.set_exchange_rate.assert_called_once()
 		pe.insert.assert_called_once()
 		pe.submit.assert_called_once()
+
+	@patch("pos_next.api.cash_movements._resolve_payment_account")
+	@patch("pos_next.api.cash_movements.get_cash_movement_defaults")
+	@patch("pos_next.api.cash_movements._validate_pos_profile")
+	@patch("pos_next.api.cash_movements.nowdate", return_value="2026-05-26")
+	def test_expense_entry_allows_expense_root_type_with_blank_account_type(
+		self,
+		mock_nowdate,
+		mock_validate_pos_profile,
+		mock_get_defaults,
+		mock_resolve_payment_account,
+	):
+		mock_get_defaults.return_value = {"cost_center": "Main - THS"}
+		mock_resolve_payment_account.return_value = "Cash - THS"
+
+		jv = Mock()
+		jv.doctype = "Journal Entry"
+		jv.name = "ACC-JV-TEST"
+		jv.append.side_effect = [Mock(), Mock()]
+		jv.save.return_value = None
+		jv.submit.return_value = None
+
+		mock_frappe = Mock()
+		mock_frappe._dict = frappe._dict
+		mock_frappe.db.get_value.return_value = frappe._dict(
+			company="Fix & Build Margin Free Store -Palakode",
+			root_type="Expense",
+			account_type="",
+			is_group=0,
+			disabled=0,
+		)
+		mock_frappe.new_doc.return_value = jv
+
+		with patch.object(cash_movements_module, "frappe", mock_frappe):
+			create_cash_movement_fn = getattr(create_cash_movement, "__wrapped__", create_cash_movement)
+			result = create_cash_movement_fn(
+				pos_profile="POS-1",
+				company="Fix & Build Margin Free Store -Palakode",
+				movement_type="expense",
+				amount=100,
+				mode_of_payment="Cash",
+				expense_account="Office Rent - THS",
+				posting_date="2026-05-26",
+			)
+
+		self.assertEqual(result["name"], "ACC-JV-TEST")
+		self.assertEqual(jv.company, "Fix & Build Margin Free Store -Palakode")
+		self.assertEqual(jv.posting_date, "2026-05-26")
+		self.assertEqual(jv.append.call_args_list[0][0][0], "accounts")
+		self.assertEqual(jv.append.call_args_list[1][0][0], "accounts")
+		jv.save.assert_called_once()
+		jv.submit.assert_called_once()

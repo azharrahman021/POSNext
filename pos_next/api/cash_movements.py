@@ -226,7 +226,7 @@ def search_expense_accounts(company: str, txt: str = "", page_length: int = 20):
 		"Account",
 		filters={
 			"company": company,
-			"account_type": "Expense Account",
+			"root_type": "Expense",
 			"is_group": 0,
 			"disabled": 0,
 		},
@@ -271,6 +271,7 @@ def create_cash_movement(
 	write_off_account: str | None = None,
 	write_off_cost_center: str | None = None,
 	reference_no: str | None = None,
+	reference_date: str | None = None,
 	remarks: str | None = None,
 	posting_date: str | None = None,
 ):
@@ -311,6 +312,7 @@ def create_cash_movement(
 		pe.party_balance = party_details.get("party_balance") or pe.party_balance
 		pe.posting_date = posting_date
 		pe.reference_no = (reference_no or "")[:140] or f"POS-{pos_profile}"
+		pe.reference_date = reference_date or posting_date
 		pe.remarks = (remarks or "").strip() or f"POS Next {movement_type} payment"
 		pe.mode_of_payment = mode_of_payment
 		pe.cost_center = cost_center
@@ -378,7 +380,7 @@ def create_cash_movement(
 	expense_account_doc = frappe.db.get_value(
 		"Account",
 		expense_account,
-		["company", "account_type", "is_group", "disabled"],
+		["company", "root_type", "account_type", "is_group", "disabled"],
 		as_dict=True,
 	)
 	if not expense_account_doc or expense_account_doc.disabled:
@@ -387,8 +389,8 @@ def create_cash_movement(
 		frappe.throw(_("Expense account must belong to the selected company"))
 	if expense_account_doc.is_group:
 		frappe.throw(_("Expense account must be a ledger account"))
-	if expense_account_doc.account_type != "Expense Account":
-		frappe.throw(_("Selected account must be an Expense Account"))
+	if expense_account_doc.root_type != "Expense":
+		frappe.throw(_("Selected account must belong to Expense"))
 
 	bank_account = _resolve_payment_account(mode_of_payment, company, payment_account)
 	defaults = get_cash_movement_defaults(company) or {}
