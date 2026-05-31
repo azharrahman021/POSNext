@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.22] - 2026-05-31
+
+### Fixed
+- Add shared Payments & Expenses UI components and support reference date on supplier and customer payment entries.
+- Allow expense entries to use valid expense ledgers identified by `root_type = Expense`, even when `account_type` is blank.
+
 ## [1.16.14] - 2026-05-24
 
 ### Changed

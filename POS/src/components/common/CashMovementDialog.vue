@@ -5,23 +5,11 @@
 	>
 		<template #body-content>
 			<div class="space-y-4">
-				<div class="flex flex-wrap gap-2">
-					<button
-						v-for="tab in tabs"
-						:key="tab.key"
-						type="button"
-						@click="movementType = tab.key"
-						:class="[
-							'px-4 py-2 rounded-lg border text-sm font-semibold transition-colors',
-							movementType === tab.key
-								? tab.activeClass
-								: 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-						]"
-					>
-						{{ __(tab.label) }}
-					</button>
-				</div>
-
+				<CashMovementTabs
+					:tabs="tabs"
+					:movement-type="movementType"
+					@select="movementType = $event"
+				/>
 				<div class="grid gap-4 lg:grid-cols-2">
 					<div class="space-y-4">
 						<div class="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-4">
@@ -63,185 +51,57 @@
 								/>
 							</div>
 
-							<div v-if="movementType !== 'expense'">
-								<label class="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
-									{{ movementType === 'customer' ? __('Customer') : __('Supplier') }}
-								</label>
-								<input
-									v-model="partySearch"
-									type="text"
-									:placeholder="movementType === 'customer' ? __('Search customer...') : __('Search supplier...')"
-									@focus="partyDropdownOpen = true"
-									@blur="handlePartyBlur"
-									class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-								/>
-								<div
-									v-if="partyDropdownOpen && partyResults.length > 0"
-									class="relative z-20"
-								>
-									<div class="absolute mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
-										<button
-											v-for="item in partyResults"
-											:key="item.value"
-											type="button"
-											@mousedown.prevent="selectParty(item)"
-											class="block w-full px-3 py-2 text-start text-sm hover:bg-blue-50"
-										>
-											<div class="font-medium text-gray-900">{{ item.value }}</div>
-											<div v-if="item.description" class="text-xs text-gray-500">{{ item.description }}</div>
-										</button>
-									</div>
-								</div>
-								<div v-if="selectedParty" class="mt-2 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-									{{ selectedParty }}
-								</div>
-								<div v-if="partyBalanceLoading" class="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-3 text-sm text-blue-700">
-									{{ __('Loading balance...') }}
-								</div>
-								<div v-else-if="partyBalanceSummary" class="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-3">
-									<div class="text-xs font-semibold uppercase tracking-wide text-blue-600">
-										{{ __('Balance Snapshot') }}
-									</div>
-									<div class="mt-2 space-y-2 text-sm">
-										<div class="flex items-center justify-between gap-4">
-											<span class="text-blue-700">{{ __('Current Company') }}</span>
-											<span class="font-semibold text-blue-900">{{ formatCurrency(partyBalanceSummary.company_balance || 0) }}</span>
-										</div>
-										<div class="flex items-center justify-between gap-4">
-											<span class="text-blue-700">{{ __('All Companies') }}</span>
-											<span class="font-semibold text-blue-900">{{ formatCurrency(partyBalanceSummary.all_company_balance || 0) }}</span>
-										</div>
-									</div>
-								</div>
-							</div>
+							<CashMovementLookupCard
+								:movement-type="movementType"
+								:party-search="partySearch"
+								:party-results="partyResults"
+								:party-dropdown-open="partyDropdownOpen"
+								:selected-party="selectedParty"
+								:party-balance-loading="partyBalanceLoading"
+								:party-balance-summary="partyBalanceSummary"
+								:expense-search="expenseSearch"
+								:expense-results="expenseResults"
+								:expense-dropdown-open="expenseDropdownOpen"
+								:selected-expense-account="selectedExpenseAccount"
+								:expense-loading="expenseLoading"
+								:expense-placeholder="defaults.default_expense_account || __('Search expense account...')"
+								:format-currency="formatCurrency"
+								@update:party-search="partySearch = $event"
+								@focus-party="partyDropdownOpen = true"
+								@blur-party="handlePartyBlur"
+								@select-party="selectParty"
+								@update:expense-search="expenseSearch = $event"
+								@focus-expense="expenseDropdownOpen = true"
+								@blur-expense="handleExpenseBlur"
+								@select-expense="selectExpenseAccount"
+								@search-expense="searchExpenseAccounts"
+							/>
 
-							<div v-else>
-								<label class="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
-									{{ __('Expense Account') }}
-								</label>
-								<input
-									v-model="expenseSearch"
-									type="text"
-									:placeholder="defaults.default_expense_account || __('Search expense account...')"
-									@focus="expenseDropdownOpen = true"
-									@blur="handleExpenseBlur"
-									class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-								/>
-								<div
-									v-if="expenseDropdownOpen && expenseResults.length > 0"
-									class="relative z-20"
-								>
-									<div class="absolute mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
-										<button
-											v-for="item in expenseResults"
-											:key="item.name"
-											type="button"
-											@mousedown.prevent="selectExpenseAccount(item)"
-											class="block w-full px-3 py-2 text-start text-sm hover:bg-emerald-50"
-										>
-											<div class="font-medium text-gray-900">{{ item.account_name || item.name }}</div>
-											<div class="text-xs text-gray-500">{{ item.name }}</div>
-										</button>
-									</div>
-								</div>
-								<div v-if="selectedExpenseAccount" class="mt-2 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-									{{ selectedExpenseAccount }}
-								</div>
-							</div>
-
-							<div
-								v-if="movementType !== 'expense'"
-								class="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3"
-							>
-								<div class="flex items-center justify-between gap-3">
-									<div>
-										<div class="text-xs font-semibold uppercase tracking-wide text-amber-700">
-											{{ __('Write Off') }}
-										</div>
-										<div class="text-xs text-amber-700/80">
-											{{ selectedParty ? __('Use the switch to enable write off.') : __('Select a party to enable write off.') }}
-										</div>
-									</div>
-									<button
-										type="button"
-										class="relative inline-flex h-8 w-14 items-center rounded-full border transition-colors duration-200"
-										:class="applyWriteOff ? 'border-amber-500 bg-amber-500' : 'border-amber-300 bg-white'"
-										@click="toggleWriteOff"
-									>
-										<span class="sr-only">{{ __('Toggle write off') }}</span>
-										<span
-											class="inline-block h-6 w-6 rounded-full bg-white shadow transition-transform duration-200"
-											:class="applyWriteOff ? 'translate-x-6' : 'translate-x-1'"
-										/>
-									</button>
-								</div>
-								<div class="space-y-2">
-									<div class="flex items-center justify-between text-[11px] text-amber-700/80">
-										<span>{{ __('Off') }}</span>
-										<span>{{ __('On') }}</span>
-									</div>
-									<div
-										class="rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-semibold text-amber-700 transition-colors duration-200"
-										:class="applyWriteOff ? 'bg-amber-50' : 'bg-white'"
-									>
-											{{ applyWriteOff ? __('Write Off Enabled') : __('Write Off Disabled') }}
-										</div>
-								</div>
-								<div class="flex items-center justify-between gap-4 text-sm">
-									<span class="text-amber-700">{{ __('Remaining to Write Off') }}</span>
-									<span class="font-semibold text-amber-900">{{ formatCurrency(writeOffAmount || 0) }}</span>
-								</div>
-								<div v-if="!selectedParty" class="text-xs text-amber-700/80">
-									{{ __('Write off is available after selecting a customer or supplier.') }}
-								</div>
-							</div>
+							<CashMovementWriteOffCard
+								:movement-type="movementType"
+								:apply-write-off="applyWriteOff"
+								:selected-party="selectedParty"
+								:write-off-amount="writeOffAmount"
+								:format-currency="formatCurrency"
+								@toggle="toggleWriteOff"
+							/>
 						</div>
 					</div>
 
 					<div class="space-y-4">
-						<div class="rounded-xl border border-gray-200 bg-white p-4">
-							<label class="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
-								{{ __('Reference No') }}
-							</label>
-							<input
-								v-model="referenceNo"
-								type="text"
-								class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-							/>
-						</div>
-
-						<div class="rounded-xl border border-gray-200 bg-white p-4">
-							<label class="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
-								{{ __('Remarks') }}
-							</label>
-							<textarea
-								v-model="remarks"
-								rows="5"
-								class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-							/>
-						</div>
-
-						<div class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4">
-							<div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ __('Summary') }}</div>
-							<div class="mt-3 space-y-2 text-sm">
-								<div class="flex items-center justify-between">
-									<span class="text-gray-600">{{ __('Type') }}</span>
-									<span class="font-semibold text-gray-900">{{ movementLabel }}</span>
-								</div>
-								<div class="flex items-center justify-between">
-									<span class="text-gray-600">{{ __('Amount') }}</span>
-									<span class="font-semibold text-gray-900">{{ formatCurrency(amount || 0) }}</span>
-								</div>
-								<div class="flex items-center justify-between">
-									<span class="text-gray-600">{{ __('Mode') }}</span>
-									<span class="font-semibold text-gray-900">{{ modeOfPayment || __('Not set') }}</span>
-								</div>
-							</div>
-						</div>
-
-						<div v-if="errorMessage" class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-							{{ errorMessage }}
-						</div>
+						<CashMovementDetailsCard
+							:reference-no="referenceNo"
+							:reference-date="referenceDate"
+							:remarks="remarks"
+							:movement-label="movementLabel"
+							:amount="amount"
+							:mode-of-payment="modeOfPayment"
+							:error-message="errorMessage"
+							:format-currency="formatCurrency"
+							@update:reference-no="referenceNo = $event"
+							@update:reference-date="referenceDate = $event"
+							@update:remarks="remarks = $event"
+						/>
 					</div>
 				</div>
 			</div>
@@ -274,6 +134,10 @@ import { computed, ref, watch } from "vue"
 import { useToast } from "@/composables/useToast"
 import { parseError } from "@/utils/errorHandler"
 import { formatCurrency as formatCurrencyUtil } from "@/utils/currency"
+import CashMovementTabs from "@/components/cash-movement/CashMovementTabs.vue"
+import CashMovementLookupCard from "@/components/cash-movement/CashMovementLookupCard.vue"
+import CashMovementWriteOffCard from "@/components/cash-movement/CashMovementWriteOffCard.vue"
+import CashMovementDetailsCard from "@/components/cash-movement/CashMovementDetailsCard.vue"
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -313,9 +177,9 @@ const show = computed({
 })
 
 const tabs = [
-	{ key: "customer", label: "Customer Payment", activeClass: "bg-blue-500 border-blue-500 text-white" },
-	{ key: "supplier", label: "Supplier Payment", activeClass: "bg-orange-500 border-orange-500 text-white" },
-	{ key: "expense", label: "Expense", activeClass: "bg-emerald-500 border-emerald-500 text-white" },
+	{ key: "customer", label: "Customer Payment", activeClass: "bg-blue-50 border-blue-500 text-blue-700 shadow-sm" },
+	{ key: "supplier", label: "Supplier Payment", activeClass: "bg-orange-50 border-orange-500 text-orange-700 shadow-sm" },
+	{ key: "expense", label: "Expense", activeClass: "bg-emerald-50 border-emerald-500 text-emerald-700 shadow-sm" },
 ]
 
 const movementType = ref("customer")
@@ -323,6 +187,7 @@ const postingDate = ref(new Date().toISOString().slice(0, 10))
 const amount = ref(0)
 const modeOfPayment = ref("")
 const referenceNo = ref("")
+const referenceDate = ref(new Date().toISOString().slice(0, 10))
 const remarks = ref("")
 const submitting = ref(false)
 const errorMessage = ref("")
@@ -341,7 +206,7 @@ const expenseSearch = ref("")
 const expenseResults = ref([])
 const expenseDropdownOpen = ref(false)
 const selectedExpenseAccount = ref("")
-const expenseAutoSelecting = ref(false)
+const expenseLoading = ref(false)
 const applyWriteOff = ref(false)
 
 let partyTimer = null
@@ -357,8 +222,12 @@ const partyCompanyBalance = computed(() => {
 	return Number(partyBalanceSummary.value?.company_balance || 0)
 })
 
+const partyAllCompanyBalance = computed(() => {
+	return Number(partyBalanceSummary.value?.all_company_balance || 0)
+})
+
 const partyOutstanding = computed(() => {
-	return Math.abs(partyCompanyBalance.value)
+	return Math.max(Math.abs(partyCompanyBalance.value), Math.abs(partyAllCompanyBalance.value))
 })
 
 const writeOffAmount = computed(() => {
@@ -388,6 +257,7 @@ function resetForm() {
 	postingDate.value = new Date().toISOString().slice(0, 10)
 	amount.value = 0
 	referenceNo.value = ""
+	referenceDate.value = new Date().toISOString().slice(0, 10)
 	remarks.value = ""
 	errorMessage.value = ""
 	partySearch.value = ""
@@ -398,6 +268,8 @@ function resetForm() {
 	expenseSearch.value = ""
 	expenseResults.value = []
 	selectedExpenseAccount.value = ""
+	expenseDropdownOpen.value = false
+	expenseLoading.value = false
 	applyWriteOff.value = false
 	movementType.value = "customer"
 	if (paymentMethods.value.length > 0) {
@@ -522,33 +394,22 @@ async function loadPartyBalance(partyName) {
 }
 
 async function searchExpenseAccounts(query) {
-	const result = await call("pos_next.api.cash_movements.search_expense_accounts", {
-		company: props.company,
-		txt: query || "",
-		page_length: 10,
-	})
-	const rows = result?.message || result || []
-	expenseResults.value = rows.map((row) => ({
-		name: row.name,
-		account_name: row.account_name,
-		score: row.score || 0,
-	}))
-
-	const normalizedQuery = (query || "").trim().toLowerCase()
-	const topMatch = expenseResults.value[0]
-	if (
-		!expenseAutoSelecting.value &&
-		movementType.value === "expense" &&
-		topMatch &&
-		normalizedQuery.length >= 3 &&
-		topMatch.score >= 90 &&
-		(topMatch.score >= (expenseResults.value[1]?.score || 0) + 15 || expenseResults.value.length === 1)
-	) {
-		expenseAutoSelecting.value = true
-		selectExpenseAccount(topMatch)
-		setTimeout(() => {
-			expenseAutoSelecting.value = false
-		}, 0)
+	expenseLoading.value = true
+	try {
+		const result = await call("pos_next.api.cash_movements.search_expense_accounts", {
+			company: props.company,
+			txt: query || "",
+			page_length: 10,
+		})
+		const rows = result?.message || result || []
+		expenseResults.value = rows.map((row) => ({
+			name: row.name,
+			account_name: row.account_name,
+			score: row.score || 0,
+		}))
+		expenseDropdownOpen.value = true
+	} finally {
+		expenseLoading.value = false
 	}
 }
 
@@ -603,6 +464,9 @@ watch(movementType, () => {
 	partyBalanceLoading.value = false
 	expenseSearch.value = defaults.value.default_expense_account || ""
 	selectedExpenseAccount.value = defaults.value.default_expense_account || ""
+	expenseResults.value = []
+	expenseDropdownOpen.value = false
+	expenseLoading.value = false
 	resetWriteOffSlider()
 })
 
@@ -617,6 +481,24 @@ watch(partySearch, (value) => {
 		partyDropdownOpen.value = true
 		searchParties(value).catch(() => {
 			partyResults.value = []
+		})
+	}, 250)
+})
+
+watch(expenseSearch, (value) => {
+	if (movementType.value !== "expense") return
+	if (value !== selectedExpenseAccount.value) {
+		selectedExpenseAccount.value = ""
+	}
+	clearTimeout(expenseTimer)
+	expenseTimer = setTimeout(() => {
+		if (!value.trim()) {
+			expenseResults.value = []
+			expenseDropdownOpen.value = false
+			return
+		}
+		searchExpenseAccounts(value).catch(() => {
+			expenseResults.value = []
 		})
 	}, 250)
 })
@@ -638,21 +520,6 @@ watch([amount, selectedParty, movementType], () => {
 	}
 })
 
-watch(expenseSearch, (value) => {
-	if (movementType.value !== "expense") return
-	if (expenseAutoSelecting.value) return
-	if (value !== selectedExpenseAccount.value) {
-		selectedExpenseAccount.value = ""
-	}
-	clearTimeout(expenseTimer)
-	expenseTimer = setTimeout(() => {
-		expenseDropdownOpen.value = true
-		searchExpenseAccounts(value).catch(() => {
-			expenseResults.value = []
-		})
-	}, 250)
-})
-
 async function submitMovement() {
 	errorMessage.value = ""
 	submitting.value = true
@@ -666,6 +533,7 @@ async function submitMovement() {
 			mode_of_payment: modeOfPayment.value,
 			posting_date: postingDate.value,
 			reference_no: referenceNo.value.trim(),
+			reference_date: referenceDate.value || postingDate.value,
 			remarks: remarks.value.trim(),
 			party_type: movementType.value === "customer" ? "Customer" : movementType.value === "supplier" ? "Supplier" : null,
 			party: movementType.value === "expense" ? null : (selectedParty.value || partySearch.value.trim()),
