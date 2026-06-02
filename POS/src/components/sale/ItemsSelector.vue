@@ -299,6 +299,15 @@
 							'group relative bg-white border border-gray-200 rounded-lg p-1.5 sm:p-2.5 touch-manipulation transition-[border-color,box-shadow] duration-100 cursor-pointer hover:border-blue-400 hover:shadow-md',
 						]"
 					>
+						<button
+							v-if="canManageRackLocations && item.is_stock_item"
+							@click.stop="openRackLocationDialog(item)"
+							class="absolute -top-1.5 -start-1.5 z-10 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-1 text-[9px] font-semibold text-amber-700 shadow-sm hover:bg-amber-100"
+							:title="__('Manage rack location')"
+						>
+							{{ __('Rack') }}
+						</button>
+
 						<!-- Stock Badge - Tap to select, long press to view warehouse availability -->
 						<div
 							v-if="(item.is_stock_item || item.is_bundle) && !item.has_variants"
@@ -316,7 +325,7 @@
 							]"
 							:title="__('Check availability in other warehouses')"
 						>
-							{{ Math.floor((item.actual_qty ?? item.stock_qty ?? 0)) }}
+							{{ formatStockQuantity(item.actual_qty ?? item.stock_qty ?? 0) }}
 						</div>
 
 						<!-- Item Image -->
@@ -567,8 +576,20 @@
 								</div>
 							</td>
 							<td class="px-2 sm:px-3 py-2 max-w-[120px] sm:max-w-[180px] md:max-w-[200px]">
-								<div class="text-xs sm:text-sm font-medium text-gray-900 truncate" :title="item.item_name">
-									{{ item.item_name }}
+								<div class="flex items-start justify-between gap-2">
+									<div class="min-w-0">
+										<div class="text-xs sm:text-sm font-medium text-gray-900 truncate" :title="item.item_name">
+											{{ item.item_name }}
+										</div>
+									</div>
+									<button
+										v-if="canManageRackLocations && item.is_stock_item"
+										@click.stop="openRackLocationDialog(item)"
+										class="inline-flex rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 hover:bg-amber-100"
+										:title="__('Manage rack location')"
+									>
+										{{ __('Rack') }}
+									</button>
 								</div>
 								<div v-if="item.attributes" class="text-[8px] sm:text-[9px] text-gray-400 truncate leading-tight">
 									{{ Object.values(item.attributes).join(' / ') }}
@@ -608,7 +629,7 @@
 									]"
 									:title="__('Check availability in other warehouses')"
 								>
-									{{ Math.floor((item.actual_qty ?? item.stock_qty ?? 0)) }}
+							{{ formatStockQuantity(item.actual_qty ?? item.stock_qty ?? 0) }}
 								</div>
 								<span
 									v-else
@@ -745,6 +766,14 @@
 		:item-name="warehouseDialogItem.itemName"
 		:uom="warehouseDialogItem.uom"
 		:company="warehouseDialogItem.company"
+	/>
+
+	<ItemRackLocationDialog
+		v-if="rackLocationItem"
+		v-model="showRackLocationDialog"
+		:item="rackLocationItem"
+		:company="props.company"
+		@saved="handleRackLocationSaved"
 	/>
 
 	<div
@@ -905,6 +934,7 @@
 
 <script setup>
 import LazyImage from "@/components/common/LazyImage.vue"
+import ItemRackLocationDialog from "@/components/sale/ItemRackLocationDialog.vue"
 import WarehouseAvailabilityDialog from "@/components/sale/WarehouseAvailabilityDialog.vue"
 import { call } from "@/utils/apiWrapper"
 import { useItemSearchStore } from "@/stores/itemSearch"
@@ -912,8 +942,14 @@ import { usePOSSettingsStore } from "@/stores/posSettings"
 import { useStock } from "@/composables/useStock"
 import { useDialogState } from "@/composables/useDialogState"
 import { useSearchInput } from "@/composables/useSearchInput"
-import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/currency"
-import { getItemLocationsBulk, resolvePosItemWarehouse } from "@/services/itemLocations"
+import {
+	DEFAULT_CURRENCY,
+	formatCurrency as formatCurrencyUtil,
+} from "@/utils/currency"
+import {
+	getItemLocationsBulk,
+	resolvePosItemWarehouse,
+} from "@/services/itemLocations"
 import { useToast } from "@/composables/useToast"
 import { storeToRefs } from "pinia"
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue"
@@ -921,7 +957,7 @@ import {
 	createOptimizedClickHandler,
 	throttleRAF,
 	addPassiveListener,
-	runWhenIdle
+	runWhenIdle,
 } from "@/utils/lowEndOptimizations"
 import { performanceConfig } from "@/utils/performanceConfig"
 import { shouldValidateItemStock } from "@/utils/stockValidator"
@@ -970,14 +1006,22 @@ const {
 
 // Search input composable — owns search/scanner state, timers, concurrency
 const {
-	searchInputRef, scannerEnabled, autoAddEnabled,
-	handleSearchInput, handleKeyDown, handleSearchClick,
-	toggleBarcodeScanner, toggleAutoAdd, focusSearchInput,
+	searchInputRef,
+	scannerEnabled,
+	autoAddEnabled,
+	handleSearchInput,
+	handleKeyDown,
+	handleSearchClick,
+	toggleBarcodeScanner,
+	toggleAutoAdd,
+	focusSearchInput,
 	clearSearchAndResetInput,
 	cleanup: cleanupSearchInput,
 } = useSearchInput({
-	itemStore, onItemFound: selectItem,
-	showWarning, isAnyDialogOpen,
+	itemStore,
+	onItemFound: selectItem,
+	showWarning,
+	isAnyDialogOpen,
 })
 
 // Local state
@@ -994,6 +1038,9 @@ let locationLoadToken = 0
 // Warehouse availability dialog state
 const showWarehouseDialog = ref(false)
 const warehouseDialogItem = ref(null)
+const showRackLocationDialog = ref(false)
+const rackLocationItem = ref(null)
+const canManageRackLocations = ref(false)
 const showItemRequestDialog = ref(false)
 const savingItemRequest = ref(false)
 const itemRequestForm = ref({
@@ -1019,7 +1066,7 @@ const scrollCleanupFns = ref([])
 
 // Pagination state (for client-side display)
 const currentPage = ref(1)
-const itemsPerPage = ref(performanceConfig.get('itemsPerPage') || 100)
+const itemsPerPage = ref(performanceConfig.get("itemsPerPage") || 100)
 const lastFilterSignature = ref("")
 
 // Computed paginated items — server fetches one page at a time,
@@ -1058,44 +1105,44 @@ const SEARCH_PLACEHOLDERS = Object.freeze({
 // Sort configuration
 const BASE_SORT_OPTIONS = Object.freeze([
 	{
-		field: 'name',
-		label: __('Name'),
-		icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z'
+		field: "name",
+		label: __("Name"),
+		icon: "M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z",
 	},
 	{
-		field: 'quantity',
-		label: __('Quantity'),
-		icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4'
+		field: "quantity",
+		label: __("Quantity"),
+		icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
 	},
 	{
-		field: 'price',
-		label: __('Price'),
-		icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+		field: "price",
+		label: __("Price"),
+		icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
 	},
 	{
-		field: 'item_code',
-		label: __('Item Code'),
-		icon: 'M7 20l4-16m2 16l4-16M6 9h14M4 15h14'
-	}
+		field: "item_code",
+		label: __("Item Code"),
+		icon: "M7 20l4-16m2 16l4-16M6 9h14M4 15h14",
+	},
 ])
 
 const CONTEXT_SORT_OPTIONS = Object.freeze({
 	brand: {
-		field: 'brand',
-		label: __('Brand'),
-		icon: 'M20 13V7a2 2 0 00-2-2h-4V3H10v2H6a2 2 0 00-2 2v6M8 21h8a2 2 0 002-2v-5H6v5a2 2 0 002 2z'
+		field: "brand",
+		label: __("Brand"),
+		icon: "M20 13V7a2 2 0 00-2-2h-4V3H10v2H6a2 2 0 00-2 2v6M8 21h8a2 2 0 002-2v-5H6v5a2 2 0 002 2z",
 	},
 	item_group: {
-		field: 'item_group',
-		label: __('Item Group'),
-		icon: 'M9 12l2 2 4-4m5.586 1.414l-6.172 6.172a2 2 0 01-2.828 0L3.414 9.414a2 2 0 010-2.828l6.172-6.172a2 2 0 012.828 0l8.172 8.172a2 2 0 010 2.828z'
+		field: "item_group",
+		label: __("Item Group"),
+		icon: "M9 12l2 2 4-4m5.586 1.414l-6.172 6.172a2 2 0 01-2.828 0L3.414 9.414a2 2 0 010-2.828l6.172-6.172a2 2 0 012.828 0l8.172 8.172a2 2 0 010 2.828z",
 	},
 })
 
 const SORT_ICONS = Object.freeze({
-	ascending: 'M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12',
-	descending: 'M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4',
-	inactive: 'M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4'
+	ascending: "M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12",
+	descending: "M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4",
+	inactive: "M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4",
 })
 
 const searchMode = computed(() => {
@@ -1111,7 +1158,7 @@ const searchMode = computed(() => {
 })
 
 const searchPlaceholder = computed(() => SEARCH_PLACEHOLDERS[searchMode.value])
-const isBrandSortActive = computed(() => sortBy.value === 'brand')
+const isBrandSortActive = computed(() => sortBy.value === "brand")
 const sortOptions = computed(() => {
 	// Context switcher:
 	// - In Item Group mode, offer Brand.
@@ -1128,15 +1175,20 @@ const sortOptions = computed(() => {
 		BASE_SORT_OPTIONS[3],
 	]
 })
-const activeFilterValue = computed(() => (
-	isBrandSortActive.value ? selectedBrand.value : selectedItemGroup.value
-))
-const activeFilterOptions = computed(() => (
+const activeFilterValue = computed(() =>
+	isBrandSortActive.value ? selectedBrand.value : selectedItemGroup.value,
+)
+const activeFilterOptions = computed(() =>
 	isBrandSortActive.value
 		? (brands.value || []).map((b) => ({ value: b.brand, label: b.brand }))
-		: (itemGroups.value || []).map((g) => ({ value: g.item_group, label: g.item_group }))
-))
-const selectedFilterLabel = computed(() => selectedBrand.value || selectedItemGroup.value || null)
+		: (itemGroups.value || []).map((g) => ({
+				value: g.item_group,
+				label: g.item_group,
+			})),
+)
+const selectedFilterLabel = computed(
+	() => selectedBrand.value || selectedItemGroup.value || null,
+)
 
 // Watch for cart items and pos profile changes (optimized - uses length + hash instead of deep watch)
 // Tracks: length, item_code, quantity, and amount to detect all cart changes including array replacements
@@ -1146,7 +1198,7 @@ watch(
 	() => {
 		itemStore.setCartItems(props.cartItems)
 	},
-	{ immediate: true, flush: 'sync' }, // Synchronous to ensure immediate stock updates
+	{ immediate: true, flush: "sync" }, // Synchronous to ensure immediate stock updates
 )
 
 watch(
@@ -1160,12 +1212,21 @@ watch(
 )
 
 watch(
-	() => [
-		props.company,
-		...(displayedItems.value || []).map((item) => item.item_code),
-	].join("|"),
+	() =>
+		[
+			props.company,
+			...(displayedItems.value || []).map((item) => item.item_code),
+		].join("|"),
 	() => {
 		loadDisplayedItemLocations()
+	},
+	{ immediate: true },
+)
+
+watch(
+	() => props.company,
+	() => {
+		loadRackLocationFacilityStatus()
 	},
 	{ immediate: true },
 )
@@ -1234,26 +1295,26 @@ onMounted(() => {
 
 	// Add passive scroll listeners for better performance
 	// Only bind to the currently active view
-	if (viewMode.value === 'grid' && gridScrollContainer.value) {
+	if (viewMode.value === "grid" && gridScrollContainer.value) {
 		const cleanup = addPassiveListener(
 			gridScrollContainer.value,
-			'scroll',
+			"scroll",
 			handleScroll,
-			{ passive: true }
+			{ passive: true },
 		)
 		scrollCleanupFns.value.push(cleanup)
-	} else if (viewMode.value === 'list' && listScrollContainer.value) {
+	} else if (viewMode.value === "list" && listScrollContainer.value) {
 		const cleanup = addPassiveListener(
 			listScrollContainer.value,
-			'scroll',
+			"scroll",
 			handleScroll,
-			{ passive: true }
+			{ passive: true },
 		)
 		scrollCleanupFns.value.push(cleanup)
 	}
 
 	// Add click outside listener for sort dropdown
-	document.addEventListener('click', handleClickOutside)
+	document.addEventListener("click", handleClickOutside)
 })
 
 onUnmounted(() => {
@@ -1267,7 +1328,7 @@ onUnmounted(() => {
 	}
 
 	// Cleanup passive listeners
-	scrollCleanupFns.value.forEach(cleanup => cleanup())
+	scrollCleanupFns.value.forEach((cleanup) => cleanup())
 	scrollCleanupFns.value = []
 
 	// Clear handlers and timers
@@ -1276,7 +1337,7 @@ onUnmounted(() => {
 	cleanupSearchInput()
 
 	// Remove click outside listener for sort dropdown
-	document.removeEventListener('click', handleClickOutside)
+	document.removeEventListener("click", handleClickOutside)
 })
 
 // Create optimized click handlers for better touch response
@@ -1285,11 +1346,14 @@ const optimizedClickHandlers = new Map()
 function getOptimizedClickHandler(item) {
 	const key = item.item_code
 	if (!optimizedClickHandlers.has(key)) {
-		const handler = createOptimizedClickHandler(() => {
-			handleItemClick(item.item_code)
-		}, {
-			feedback: true
-		})
+		const handler = createOptimizedClickHandler(
+			() => {
+				handleItemClick(item.item_code)
+			},
+			{
+				feedback: true,
+			},
+		)
 		optimizedClickHandlers.set(key, handler)
 	}
 	return optimizedClickHandlers.get(key)
@@ -1345,10 +1409,19 @@ async function selectItem(item, autoAdd = false) {
 	if (!resolvedItem) return false
 
 	// Early out-of-stock guard — full qty validation happens in cartStore.addItem()
-	if (!resolvedItem.has_variants && settingsStore.shouldEnforceStockValidation() && shouldValidateItemStock(resolvedItem)) {
+	if (
+		!resolvedItem.has_variants &&
+		settingsStore.shouldEnforceStockValidation() &&
+		shouldValidateItemStock(resolvedItem)
+	) {
 		const qty = resolvedItem.actual_qty ?? resolvedItem.stock_qty ?? 0
 		if (qty <= 0) {
-			showError(__('"{0}" is out of stock in warehouse "{1}".', [resolvedItem.item_name, resolvedItem.warehouse || '']))
+			showError(
+				__('"{0}" is out of stock in warehouse "{1}".', [
+					resolvedItem.item_name,
+					resolvedItem.warehouse || "",
+				]),
+			)
 			return false
 		}
 	}
@@ -1363,7 +1436,7 @@ function handleItemClick(itemCode) {
 		itemHandledByLongPress = false
 		return
 	}
-	const item = filteredItems.value.find(i => i.item_code === itemCode)
+	const item = filteredItems.value.find((i) => i.item_code === itemCode)
 	selectItem(item)
 }
 
@@ -1371,15 +1444,25 @@ function formatCurrency(amount) {
 	return formatCurrencyUtil(Number.parseFloat(amount || 0), props.currency)
 }
 
+function formatStockQuantity(quantity) {
+	const num = Number.parseFloat(quantity || 0)
+	if (!Number.isFinite(num)) return "0"
+	return Number.isInteger(num) ? `${num}` : num.toFixed(2)
+}
+
 const requestItemSummary = computed(() => {
-	return itemRequestForm.value.matched_item
-		|| itemRequestForm.value.requested_item_name
-		|| __("Unknown")
+	return (
+		itemRequestForm.value.matched_item ||
+		itemRequestForm.value.requested_item_name ||
+		__("Unknown")
+	)
 })
 
 const requestDialogSubtitle = computed(() => {
 	if (itemRequestForm.value.availability_type === "out_of_stock") {
-		return __("Track an item the customer wants but is currently unavailable in stock.")
+		return __(
+			"Track an item the customer wants but is currently unavailable in stock.",
+		)
 	}
 	if (itemRequestForm.value.availability_type === "not_in_inventory") {
 		return __("Track an item that is not yet in your inventory.")
@@ -1392,10 +1475,19 @@ function getCustomerMobile(customer) {
 	return customer.mobile_no || customer.mobile || customer.phone || ""
 }
 
-function openItemRequestDialog(item = null, availabilityType = "unknown", requestedItemName = "") {
+function openItemRequestDialog(
+	item = null,
+	availabilityType = "unknown",
+	requestedItemName = "",
+) {
 	const customer = activeCustomer.value
 	const posProfileName = posProfile.value || props.posProfile || ""
-	const requestedName = (requestedItemName || item?.item_name || searchTerm.value || "").trim()
+	const requestedName = (
+		requestedItemName ||
+		item?.item_name ||
+		searchTerm.value ||
+		""
+	).trim()
 
 	itemRequestForm.value = {
 		requested_item_name: requestedName,
@@ -1408,7 +1500,9 @@ function openItemRequestDialog(item = null, availabilityType = "unknown", reques
 		warehouse: "",
 		qty: Number.parseFloat(item?.qty || 1) || 1,
 		uom: item?.uom || item?.stock_uom || "",
-		notes: item?.item_name ? __("Requested from POS for {0}", [item.item_name]) : "",
+		notes: item?.item_name
+			? __("Requested from POS for {0}", [item.item_name])
+			: "",
 	}
 	showItemRequestDialog.value = true
 }
@@ -1433,7 +1527,8 @@ async function submitItemRequest() {
 			matched_item: itemRequestForm.value.matched_item || null,
 			customer: itemRequestForm.value.customer || null,
 			mobile_no: itemRequestForm.value.mobile_no || null,
-			pos_profile: itemRequestForm.value.pos_profile || props.posProfile || null,
+			pos_profile:
+				itemRequestForm.value.pos_profile || props.posProfile || null,
 			company: itemRequestForm.value.company || props.company || null,
 			warehouse: itemRequestForm.value.warehouse || null,
 			qty: itemRequestForm.value.qty || 1,
@@ -1442,7 +1537,8 @@ async function submitItemRequest() {
 			notes: itemRequestForm.value.notes || null,
 		})
 
-		const createdName = response?.message?.name || response?.name || requestedName
+		const createdName =
+			response?.message?.name || response?.name || requestedName
 		showSuccess(__("Item request saved: {0}", [createdName]))
 		closeItemRequestDialog()
 	} catch (error) {
@@ -1458,10 +1554,43 @@ function showWarehouseAvailability(item) {
 	warehouseDialogItem.value = {
 		itemCode: item.item_code,
 		itemName: item.item_name,
-		uom: item.uom || item.stock_uom || 'Nos',
-		company: props.company
+		uom: item.uom || item.stock_uom || "Nos",
+		company: props.company,
 	}
 	showWarehouseDialog.value = true
+}
+
+async function loadRackLocationFacilityStatus() {
+	if (!props.company) {
+		canManageRackLocations.value = false
+		return
+	}
+
+	try {
+		const response = await call(
+			"pos_next.api.item_locations.get_rack_location_facility_status",
+			{
+				company: props.company,
+			},
+		)
+		const payload = response?.message || response || {}
+		canManageRackLocations.value = Boolean(
+			payload.integration_available && payload.can_manage,
+		)
+	} catch (error) {
+		console.warn("Rack location facility unavailable", error)
+		canManageRackLocations.value = false
+	}
+}
+
+function openRackLocationDialog(item) {
+	rackLocationItem.value = item
+	showRackLocationDialog.value = true
+}
+
+function handleRackLocationSaved() {
+	loadDisplayedItemLocations()
+	rackLocationItem.value = null
 }
 
 async function loadDisplayedItemLocations() {
@@ -1471,7 +1600,11 @@ async function loadDisplayedItemLocations() {
 	}
 
 	const token = ++locationLoadToken
-	const itemCodes = [...new Set(displayedItems.value.map((item) => item.item_code).filter(Boolean))]
+	const itemCodes = [
+		...new Set(
+			displayedItems.value.map((item) => item.item_code).filter(Boolean),
+		),
+	]
 
 	try {
 		const result = await getItemLocationsBulk(itemCodes, props.company)
@@ -1509,15 +1642,26 @@ function getLocationCount(item) {
 }
 
 async function resolveItemLocationForSale(item, autoAdd = false) {
-	if (!props.company || item.has_variants || !(item.is_stock_item || item.is_bundle)) {
+	if (
+		!props.company ||
+		item.has_variants ||
+		!(item.is_stock_item || item.is_bundle)
+	) {
 		return item
 	}
 
 	try {
-		const response = await resolvePosItemWarehouse(item.item_code, props.company, item.resolved_qty || 1)
+		const response = await resolvePosItemWarehouse(
+			item.item_code,
+			props.company,
+			item.resolved_qty || 1,
+		)
 		const resolution = response
 
-		if (!resolution || (!resolution.warehouse && !resolution.requires_selection)) {
+		if (
+			!resolution ||
+			(!resolution.warehouse && !resolution.requires_selection)
+		) {
 			return item
 		}
 
@@ -1536,10 +1680,13 @@ async function resolveItemLocationForSale(item, autoAdd = false) {
 			return null
 		}
 
-		return buildItemWithLocation(item, resolution.location || {
-			warehouse: resolution.warehouse,
-			available_qty: item.actual_qty ?? item.stock_qty ?? 0,
-		})
+		return buildItemWithLocation(
+			item,
+			resolution.location || {
+				warehouse: resolution.warehouse,
+				available_qty: item.actual_qty ?? item.stock_qty ?? 0,
+			},
+		)
 	} catch (error) {
 		console.warn("Item location resolver unavailable", error)
 		return item
@@ -1552,7 +1699,11 @@ function buildItemWithLocation(item, location) {
 	const locationQty = Number.parseFloat(location.available_qty ?? 0)
 	const itemQty = Number.parseFloat(item.actual_qty ?? item.stock_qty ?? 0)
 
-	if ((!Number.isFinite(locationQty) || locationQty <= 0) && Number.isFinite(itemQty) && itemQty > 0) {
+	if (
+		(!Number.isFinite(locationQty) || locationQty <= 0) &&
+		Number.isFinite(itemQty) &&
+		itemQty > 0
+	) {
 		return {
 			...item,
 			pos_location_label: location.label,
@@ -1599,26 +1750,32 @@ watch(viewMode, async () => {
 	await nextTick()
 
 	// Clean up existing listeners
-	scrollCleanupFns.value.forEach(cleanup => cleanup())
+	scrollCleanupFns.value.forEach((cleanup) => cleanup())
 	scrollCleanupFns.value = []
 
 	// Rebind listeners to the new active container
-	if (viewMode.value === 'grid' && gridScrollContainer.value) {
+	if (viewMode.value === "grid" && gridScrollContainer.value) {
 		const cleanup = addPassiveListener(
 			gridScrollContainer.value,
-			'scroll',
+			"scroll",
 			handleScroll,
-			{ passive: true }
+			{ passive: true },
 		)
 		scrollCleanupFns.value.push(cleanup)
-	} else if (viewMode.value === 'list' && listScrollContainer.value) {
+	} else if (viewMode.value === "list" && listScrollContainer.value) {
 		const cleanup = addPassiveListener(
 			listScrollContainer.value,
-			'scroll',
+			"scroll",
 			handleScroll,
-			{ passive: true }
+			{ passive: true },
 		)
 		scrollCleanupFns.value.push(cleanup)
+	}
+})
+
+watch(showRackLocationDialog, (isOpen) => {
+	if (!isOpen) {
+		rackLocationItem.value = null
 	}
 })
 
@@ -1715,16 +1872,16 @@ function handleSortToggle(field) {
 
 	// If clicking the same field, toggle between asc/desc
 	if (sortBy.value === field) {
-		const newOrder = sortOrder.value === 'asc' ? 'desc' : 'asc'
+		const newOrder = sortOrder.value === "asc" ? "desc" : "asc"
 		itemStore.setSortFilter(field, newOrder)
 	} else {
 		// New field - start with ascending
-		itemStore.setSortFilter(field, 'asc')
+		itemStore.setSortFilter(field, "asc")
 	}
 }
 
 watch(sortBy, async (newSortBy, oldSortBy) => {
-	if (newSortBy === 'brand') {
+	if (newSortBy === "brand") {
 		await itemStore.loadBrands()
 		if (selectedItemGroup.value) {
 			await itemStore.setSelectedItemGroup(null)
@@ -1732,27 +1889,34 @@ watch(sortBy, async (newSortBy, oldSortBy) => {
 		return
 	}
 
-	if (oldSortBy === 'brand' && selectedBrand.value) {
+	if (oldSortBy === "brand" && selectedBrand.value) {
 		await itemStore.setSelectedBrand(null)
 	}
 })
 
 function getSortLabel(sortByValue) {
-	return CONTEXT_SORT_OPTIONS[sortByValue]?.label
-		|| BASE_SORT_OPTIONS.find(opt => opt.field === sortByValue)?.label
-		|| sortByValue
+	return (
+		CONTEXT_SORT_OPTIONS[sortByValue]?.label ||
+		BASE_SORT_OPTIONS.find((opt) => opt.field === sortByValue)?.label ||
+		sortByValue
+	)
 }
 
 function getSortIconState(field) {
-	if (sortBy.value !== field) return 'inactive'
-	return sortOrder.value === 'asc' ? 'ascending' : 'descending'
+	if (sortBy.value !== field) return "inactive"
+	return sortOrder.value === "asc" ? "ascending" : "descending"
 }
 
 // Close dropdown when clicking outside
 function handleClickOutside(event) {
 	if (showSortDropdown.value) {
-		const dropdown = event.target.closest('.relative')
-		if (!dropdown || !dropdown.querySelector('button[data-sort-button]')?.contains(event.target)) {
+		const dropdown = event.target.closest(".relative")
+		if (
+			!dropdown ||
+			!dropdown
+				.querySelector("button[data-sort-button]")
+				?.contains(event.target)
+		) {
 			showSortDropdown.value = false
 		}
 	}
