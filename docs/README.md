@@ -11,6 +11,12 @@ Welcome to the POS Next documentation directory. This folder contains comprehens
   - Available languages
   - Troubleshooting
 
+- **[ITEM_RACK_LOCATION_MANAGEMENT.md](ITEM_RACK_LOCATION_MANAGEMENT.md)** - Rack location management in POS
+  - Where the editor appears
+  - Expected shelf-picking behavior
+  - User workflow for add/update
+  - Edge cases and setup requirements
+
 - **[Wallet-Loyalty-User-Guide.md](Wallet-Loyalty-User-Guide.md)** - Wallet and loyalty system user guide
 
 - **[OFFERS_AND_PROMOTIONS.md](OFFERS_AND_PROMOTIONS.md)** - Offers and promotions system
@@ -93,6 +99,7 @@ yarn build
 docs/
 ├── README.md                        # This file
 ├── LOCALIZATION.md                  # Language settings user guide
+├── ITEM_RACK_LOCATION_MANAGEMENT.md # POS rack location management guide
 ├── OFFERS_AND_PROMOTIONS.md         # Offers and promotions system
 ├── OFFLINE_SYNC.md                  # Offline invoice sync system
 ├── PRICING_AND_SUBMISSION.md        # Pricing and invoice submission flow
