@@ -1796,9 +1796,13 @@ def render_draft_invoice_print(
 
 @frappe.whitelist()
 def get_draft_invoices(pos_opening_shift=None, pos_profile=None, doctype="Sales Invoice"):
-    """Get all draft invoices for a POS opening shift or POS Profile."""
+    """Get current user's draft invoices for a POS opening shift or POS Profile."""
+    if doctype != "Sales Invoice":
+        frappe.throw(_("Only Sales Invoice drafts can be loaded from POS"))
+
     filters = {
         "docstatus": 0,
+        "owner": frappe.session.user,
     }
 
     if pos_opening_shift:
@@ -1810,7 +1814,7 @@ def get_draft_invoices(pos_opening_shift=None, pos_profile=None, doctype="Sales 
         filters["pos_profile"] = pos_profile
 
     # Performance: Get all invoice names first
-    invoices_list = frappe.get_list(
+    invoices_list = frappe.get_all(
         doctype,
         filters=filters,
         fields=["name"],
