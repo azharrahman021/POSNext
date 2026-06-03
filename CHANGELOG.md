@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Scope POS draft invoice lookup to the logged-in user so cashiers only see their own draft invoices in the Draft Invoices dialog.
+
 ## [1.16.22] - 2026-05-31
 
 ### Fixed
