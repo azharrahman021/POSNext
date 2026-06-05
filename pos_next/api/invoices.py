@@ -1846,8 +1846,11 @@ def delete_invoice(invoice):
 @frappe.whitelist()
 def cleanup_old_drafts(pos_profile=None, max_age_hours=48):
     """
-    Clean up old draft invoices to prevent stock reservation issues.
-    Deletes drafts older than max_age_hours (default 24 hours).
+    Compatibility endpoint for older POS bundles.
+
+    Draft POS invoices are user-visible work in progress, so this endpoint must
+    not delete them silently. Keep the method available for cached clients, but
+    report matching drafts without mutating anything.
     """
     from datetime import datetime, timedelta
 
@@ -1864,7 +1867,6 @@ def cleanup_old_drafts(pos_profile=None, max_age_hours=48):
     if pos_profile:
         filters["pos_profile"] = pos_profile
 
-    # Get old drafts
     old_drafts = frappe.get_all(
         doctype,
         filters=filters,
@@ -1872,22 +1874,10 @@ def cleanup_old_drafts(pos_profile=None, max_age_hours=48):
         limit_page_length=100,  # Safety limit
     )
 
-    deleted_count = 0
-    for draft in old_drafts:
-        try:
-            frappe.delete_doc(
-                doctype, draft["name"], force=True, ignore_permissions=True
-            )
-            deleted_count += 1
-        except Exception as e:
-            frappe.log_error(
-                f"Failed to delete draft {draft['name']}: {str(e)}",
-                "Draft Cleanup Error",
-            )
-
     return {
-        "deleted": deleted_count,
-        "message": f"Cleaned up {deleted_count} old draft invoices",
+        "deleted": 0,
+        "skipped": len(old_drafts),
+        "message": f"Skipped {len(old_drafts)} old draft invoices; automatic draft cleanup is disabled",
     }
 
 

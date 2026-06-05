@@ -4,10 +4,29 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from pos_next.api.invoices import update_invoice
+from pos_next.api.invoices import cleanup_old_drafts, update_invoice
 
 
 class TestInvoicesAPI(unittest.TestCase):
+    def test_cleanup_old_drafts_is_non_destructive(self):
+        with patch("pos_next.api.invoices.frappe") as mock_frappe:
+            mock_frappe.get_all.return_value = [
+                {"name": "SINV-OLD-0001", "modified": "2026-06-04 10:00:00"}
+            ]
+
+            result = cleanup_old_drafts.__wrapped__(
+                pos_profile="POS Profile - Test",
+                max_age_hours=1,
+            )
+
+        mock_frappe.delete_doc.assert_not_called()
+        self.assertEqual(result["deleted"], 0)
+        self.assertEqual(result["skipped"], 1)
+        filters = mock_frappe.get_all.call_args.kwargs["filters"]
+        self.assertEqual(filters["docstatus"], 0)
+        self.assertEqual(filters["is_pos"], 1)
+        self.assertEqual(filters["pos_profile"], "POS Profile - Test")
+
     @patch("pos_next.api.invoices.frappe.local", new=Mock(flags=Mock(in_test=True)))
     @patch("pos_next.api.invoices.frappe.log_error")
     @patch("pos_next.api.invoices.standardize_pricing_rules")
