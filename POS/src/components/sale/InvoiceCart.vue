@@ -332,6 +332,26 @@
 					</button>
 				</div>
 			</div>
+
+			<div class="mt-2">
+				<label
+					for="cart-invoice-title"
+					class="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-500"
+				>
+					{{ __("Invoice Title") }}
+				</label>
+				<input
+					id="cart-invoice-title"
+					name="cart-invoice-title"
+					:value="invoiceTitle"
+					@input="handleInvoiceTitleInput"
+					type="text"
+					:placeholder="__('Optional custom title')"
+					class="w-full h-9 px-3 text-xs border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm transition-shadow"
+					autocomplete="off"
+					:aria-label="__('Invoice title')"
+				/>
+			</div>
 		</div>
 
 		<!-- Action Buttons Section -->
@@ -1285,6 +1305,10 @@ const props = defineProps({
 		default: () => [],
 	},
 	customer: Object,
+	invoiceTitle: {
+		type: String,
+		default: "",
+	},
 	subtotal: {
 		type: Number,
 		default: 0,
@@ -1328,6 +1352,7 @@ const emit = defineEmits([
 	"select-customer", // (customer) - Select/change customer
 	"edit-customer", // (customer) - Open edit customer dialog
 	"create-customer", // (searchText) - Open create customer dialog
+	"update-invoice-title", // (title) - Update custom invoice title override
 	"proceed-to-payment", // () - Navigate to payment screen
 	"clear-cart", // () - Clear all items from cart
 	"save-draft", // () - Save current cart as draft/hold order
@@ -1595,6 +1620,10 @@ const displayGrandTotal = computed(() => {
  */
 function handleSearchInput(event) {
 	customerSearch.value = event.target.value;
+}
+
+function handleInvoiceTitleInput(event) {
+	emit("update-invoice-title", event.target.value);
 }
 
 // Track if customer history has been loaded this session

@@ -83,6 +83,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 	const {
 		invoiceItems,
 		customer,
+		invoiceTitle,
 		subtotal,
 		totalTax,
 		totalDiscount,
@@ -102,6 +103,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		loadTaxRules,
 		setTaxInclusive,
 		setDefaultCustomer,
+		setInvoiceTitle,
 		applyDiscount,
 		removeDiscount,
 		applyOffersResource,
@@ -1876,6 +1878,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		// State
 		invoiceItems,
 		customer,
+		invoiceTitle,
 		subtotal,
 		totalTax,
 		totalDiscount,
@@ -1907,6 +1910,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		updateItemQuantity,
 		clearCart,
 		setCustomer,
+		setInvoiceTitle,
 		refreshCartPricingForCustomer,
 		setDefaultCustomer,
 		setPendingItem,

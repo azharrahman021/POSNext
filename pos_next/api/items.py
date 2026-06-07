@@ -29,6 +29,7 @@ ITEM_RESULT_FIELDS = [
 ]
 
 ITEM_RESULT_COLUMNS = ",\n\t".join(ITEM_RESULT_FIELDS)
+POS_LOCATION_RULE_DOCTYPE = "POS Item Location Rule"
 
 
 def _normalize_customer(customer):
@@ -46,6 +47,40 @@ def _normalize_customer(customer):
 		return customer.get("name") or customer.get("customer")
 
 	return customer
+
+
+def _get_pos_rack_labels(item_codes, company):
+	"""Return saved rack labels keyed by item code for the company."""
+	if not item_codes or not company:
+		return {}
+
+	if not frappe.db.exists("DocType", POS_LOCATION_RULE_DOCTYPE):
+		return {}
+
+	rows = frappe.get_all(
+		POS_LOCATION_RULE_DOCTYPE,
+		filters={
+			"company": company,
+			"item_code": ["in", item_codes],
+			"enabled": 1,
+		},
+		fields=["item_code", "display_label", "default_warehouse"],
+	)
+
+	result = {}
+	for row in rows:
+		label = (row.get("display_label") or "").strip()
+		warehouse = (row.get("default_warehouse") or "").strip()
+		if not label and warehouse:
+			label = warehouse.split(" - ")[0].strip()
+		if not label:
+			continue
+		result[row["item_code"]] = {
+			"label": label,
+			"warehouse": warehouse,
+		}
+
+	return result
 
 
 def get_effective_selling_price_list(pos_profile_doc, customer=None):
@@ -1535,6 +1570,8 @@ def get_items(
 				for attr in attributes:
 					attributes_map.setdefault(attr["parent"], {})[attr["attribute"]] = attr["attribute_value"]
 
+		rack_label_map = _get_pos_rack_labels(item_codes, pos_profile_doc.company)
+
 		# Enrich items with price, stock, barcode, and UOM data
 		for item in items:
 			stock_uom = item.get("stock_uom")
@@ -1662,6 +1699,11 @@ def get_items(
 			# Variant attributes
 			if item.get("variant_of") and item["item_code"] in attributes_map:
 				item["attributes"] = attributes_map[item["item_code"]]
+
+			rack_details = rack_label_map.get(item["item_code"])
+			if rack_details:
+				item["pos_rack_label"] = rack_details["label"]
+				item["pos_rack_warehouse"] = rack_details["warehouse"]
 
 		# Apply resolved barcode data (weighted/priced) to the first matching item
 		if resolved_barcode_data and items:

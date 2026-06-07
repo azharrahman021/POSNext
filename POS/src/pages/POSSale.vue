@@ -401,6 +401,7 @@
 							<InvoiceCart
 								:items="cartStore.invoiceItems"
 								:customer="cartStore.customer"
+								:invoice-title="cartStore.invoiceTitle"
 								:subtotal="cartStore.subtotal"
 								:tax-amount="cartStore.totalTax"
 								:discount-amount="cartStore.totalDiscount"
@@ -416,6 +417,7 @@
 								@select-customer="handleCustomerSelected"
 								@create-customer="handleCreateCustomer"
 								@edit-customer="handleEditCustomer"
+								@update-invoice-title="cartStore.setInvoiceTitle"
 								@proceed-to-payment="handleProceedToPayment"
 								@clear-cart="handleClearCart"
 								@save-draft="handleSaveDraft"
@@ -2544,6 +2546,7 @@ async function handleSaveDraft() {
 	const savedDraft = await draftsStore.saveDraftInvoice(
 		cartStore.invoiceItems,
 		cartStore.customer,
+		cartStore.invoiceTitle,
 		cartStore.posProfile,
 		cartStore.appliedOffers,
 		cartStore.currentDraftId
@@ -2562,6 +2565,7 @@ async function handleLoadDraft(draft) {
 			const saved = await draftsStore.saveDraftInvoice(
 				cartStore.invoiceItems,
 				cartStore.customer,
+				cartStore.invoiceTitle,
 				cartStore.posProfile,
 				cartStore.appliedOffers,
 				cartStore.currentDraftId
@@ -2581,6 +2585,7 @@ async function handleLoadDraft(draft) {
 		const draftData = await draftsStore.loadDraft(draft);
 		cartStore.invoiceItems = draftData.items;
 		cartStore.setCustomer(draftData.customer);
+		cartStore.setInvoiceTitle(draftData.invoice_title || "");
 		cartStore.currentDraftId = draft.draft_id; // Set current draft ID
 
 		// Rebuild incremental cache to recalculate totals

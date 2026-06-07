@@ -22,6 +22,7 @@ export function useInvoice() {
 	// State
 	const invoiceItems = ref([])
 	const customer = ref(null)
+	const invoiceTitle = ref("")
 	const payments = ref([])
 	const salesTeam = ref([]) // Sales team for Sales Invoice
 	const posProfile = ref(null)
@@ -949,6 +950,31 @@ export function useInvoice() {
 		}
 	}
 
+	function getCustomerDisplayTitle() {
+		const currentCustomer = customer.value
+
+		if (!currentCustomer) {
+			return null
+		}
+
+		if (typeof currentCustomer === "object") {
+			return currentCustomer.customer_name || currentCustomer.name || null
+		}
+
+		return currentCustomer
+	}
+
+	function resolveInvoiceDocumentTitle() {
+		const customTitle =
+			typeof invoiceTitle.value === "string" ? invoiceTitle.value.trim() : ""
+
+		return customTitle || getCustomerDisplayTitle() || null
+	}
+
+	function setInvoiceTitle(title) {
+		invoiceTitle.value = typeof title === "string" ? title : ""
+	}
+
 	async function saveDraft(targetDoctype = "Sales Invoice") {
 		/**
 		 * Save invoice as draft (Step 1)
@@ -964,6 +990,7 @@ export function useInvoice() {
 			pos_profile: posProfile.value,
 			posa_pos_opening_shift: posOpeningShift.value,
 			customer: customer.value?.name || customer.value,
+			title: resolveInvoiceDocumentTitle(),
 			items: formatItemsForSubmission(rawItems),
 			payments: invoicePayments,
 			discount_amount: additionalDiscount.value || 0,
@@ -1031,6 +1058,7 @@ export function useInvoice() {
 					pos_profile: posProfile.value,
 					posa_pos_opening_shift: posOpeningShift.value,
 					customer: customer.value?.name || customer.value,
+					title: resolveInvoiceDocumentTitle(),
 					items: formatItemsForSubmission(rawItems),
 					payments: invoicePayments,
 					discount_amount: additionalDiscount.value || 0,
@@ -1204,6 +1232,7 @@ export function useInvoice() {
 	function resetInvoice() {
 		invoiceItems.value = []
 		payments.value = []
+		invoiceTitle.value = ""
 		additionalDiscount.value = 0
 		couponCode.value = null
 
@@ -1231,6 +1260,7 @@ export function useInvoice() {
 
 		invoiceItems.value = []
 		payments.value = []
+		invoiceTitle.value = ""
 		additionalDiscount.value = 0
 		couponCode.value = null
 
@@ -1289,6 +1319,7 @@ export function useInvoice() {
 		// State
 		invoiceItems,
 		customer,
+		invoiceTitle,
 		payments,
 		salesTeam,
 		posProfile,
@@ -1326,6 +1357,7 @@ export function useInvoice() {
 		resetInvoice,
 		clearCart,
 		setDefaultCustomer,
+		setInvoiceTitle,
 		loadTaxRules,
 		setTaxInclusive,
 		recalculateItem,

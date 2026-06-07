@@ -6,6 +6,7 @@ from frappe.utils import cint
 
 
 RULE_DOCTYPE = "POS Item Location Rule"
+DETAIL_DOCTYPE = "POS Item Location Rule Detail"
 
 
 def _rule_doctype_available():
@@ -92,9 +93,75 @@ def _get_leaf_warehouse_options(company):
 		{
 			"value": row.name,
 			"label": row.warehouse_name or row.name,
+			"display_label": row.warehouse_name or row.name,
+			"source": "warehouse",
 		}
 		for row in rows
 	]
+
+
+def _get_existing_rule_location_options(company, current_rule=None):
+	if not company:
+		return []
+
+	rows = frappe.get_all(
+		RULE_DOCTYPE,
+		filters={"company": company},
+		fields=["name", "default_warehouse", "display_label"],
+		order_by="display_label asc, default_warehouse asc",
+	)
+	detail_rows = []
+	if rows:
+		detail_rows = frappe.get_all(
+			DETAIL_DOCTYPE,
+			filters={"parent": ["in", [row.name for row in rows]]},
+			fields=["warehouse", "display_label", "priority", "idx"],
+			order_by="priority asc, idx asc",
+		)
+
+	options = []
+	seen = set()
+
+	def add_option(warehouse, label=None):
+		warehouse = (warehouse or "").strip()
+		label = (label or "").strip()
+		if not warehouse or warehouse in seen:
+			return
+
+		seen.add(warehouse)
+		options.append(
+			{
+				"value": warehouse,
+				"label": label or warehouse,
+				"display_label": label,
+				"source": "configured",
+			}
+		)
+
+	if current_rule:
+		add_option(current_rule.get("default_warehouse"), current_rule.get("display_label"))
+		for row in current_rule.get("alternate_locations") or []:
+			add_option(row.get("warehouse"), row.get("display_label"))
+
+	for row in rows:
+		add_option(row.default_warehouse, row.display_label)
+	for row in detail_rows:
+		add_option(row.warehouse, row.display_label)
+
+	return options
+
+
+def _get_location_options(company, current_rule=None):
+	options = _get_existing_rule_location_options(company, current_rule)
+	seen = {row["value"] for row in options}
+
+	for row in _get_leaf_warehouse_options(company):
+		if row["value"] in seen:
+			continue
+		seen.add(row["value"])
+		options.append(row)
+
+	return options
 
 
 def _get_status_payload(company=None):
@@ -148,11 +215,12 @@ def get_item_rack_location_config(item_code, company):
 		frappe.throw(_("Item and company are required."))
 
 	rule_name = _get_rule(item_code, company)
+	rule_payload = _get_rule_payload(rule_name)
 	return {
 		**_get_status_payload(company=company),
 		"item_code": item_code,
-		"rule": _get_rule_payload(rule_name),
-		"warehouse_options": _get_leaf_warehouse_options(company),
+		"rule": rule_payload,
+		"warehouse_options": _get_location_options(company, rule_payload),
 	}
 
 

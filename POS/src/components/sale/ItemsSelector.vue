@@ -1584,7 +1584,16 @@ async function loadRackLocationFacilityStatus() {
 }
 
 function openRackLocationDialog(item) {
-	rackLocationItem.value = item
+	const rule = getLocationRule(item)
+	rackLocationItem.value = {
+		...item,
+		pos_current_location: getPrimaryLocation(item),
+		pos_current_warehouse:
+			rule?.default_warehouse ||
+			item?.pos_rack_warehouse ||
+			item?.pos_location_warehouse ||
+			"",
+	}
 	showRackLocationDialog.value = true
 }
 
@@ -1624,13 +1633,23 @@ function getLocationRule(item) {
 }
 
 function getPrimaryLocation(item) {
-	return getLocationRule(item)?.default_label || ""
+	return (
+		getLocationRule(item)?.default_label ||
+		item?.pos_rack_label ||
+		item?.pos_location_label ||
+		""
+	)
 }
 
 function getPrimaryLocationQty(item) {
 	const locationQty = Number.parseFloat(getLocationRule(item)?.default_qty ?? 0)
 	if (Number.isFinite(locationQty) && locationQty > 0) {
 		return locationQty
+	}
+
+	const fallbackQty = Number.parseFloat(item?.pos_location_available_qty ?? 0)
+	if (Number.isFinite(fallbackQty) && fallbackQty > 0) {
+		return fallbackQty
 	}
 
 	const itemQty = Number.parseFloat(item?.actual_qty ?? item?.stock_qty ?? 0)

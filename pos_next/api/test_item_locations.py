@@ -41,10 +41,19 @@ class TestRackLocationConfig(unittest.TestCase):
 			return None
 
 		def fake_get_all(doctype, filters=None, fields=None, order_by=None):
+			if doctype == item_locations_module.RULE_DOCTYPE:
+				return [
+					SimpleNamespace(name="RULE-0001", default_warehouse="KD-A1", display_label="A1"),
+					SimpleNamespace(name="RULE-0002", default_warehouse="KD-A3", display_label="A3"),
+				]
+			if doctype == item_locations_module.DETAIL_DOCTYPE:
+				return [
+					SimpleNamespace(warehouse="KD-B1", display_label="B1", priority=100, idx=1),
+				]
 			if doctype == "Warehouse":
 				return [
 					SimpleNamespace(name="KD-A1", warehouse_name="A1"),
-					SimpleNamespace(name="KD-A2", warehouse_name="A2"),
+					SimpleNamespace(name="KD-A4", warehouse_name="A4"),
 				]
 			return []
 
@@ -74,6 +83,10 @@ class TestRackLocationConfig(unittest.TestCase):
 		self.assertEqual(result["rule"]["default_warehouse"], "KD-A1")
 		self.assertEqual(result["rule"]["alternate_locations"][0]["warehouse"], "KD-A2")
 		self.assertEqual(result["warehouse_options"][0]["value"], "KD-A1")
+		self.assertEqual(result["warehouse_options"][0]["display_label"], "A1")
+		self.assertEqual(result["warehouse_options"][1]["value"], "KD-A2")
+		self.assertEqual(result["warehouse_options"][3]["value"], "KD-B1")
+		self.assertEqual(result["warehouse_options"][4]["value"], "KD-A4")
 
 	def test_upsert_updates_existing_rule_and_drops_default_from_alternates(self):
 		def fake_exists(doctype, name):

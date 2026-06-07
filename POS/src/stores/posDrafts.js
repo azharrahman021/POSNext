@@ -98,8 +98,48 @@ export const usePOSDraftsStore = defineStore("posDrafts", () => {
 		return out
 	}
 
+	function getCustomerDisplayTitle(customer) {
+		if (!customer) {
+			return null
+		}
+
+		if (typeof customer === "object") {
+			return customer.customer_name || customer.name || null
+		}
+
+		return customer
+	}
+
+	function resolveDraftDocumentTitle(invoiceTitle, customer) {
+		const customTitle =
+			typeof invoiceTitle === "string" ? invoiceTitle.trim() : ""
+
+		return customTitle || getCustomerDisplayTitle(customer) || null
+	}
+
+	function extractCustomInvoiceTitle(title, customer) {
+		const resolvedTitle = typeof title === "string" ? title.trim() : ""
+		if (!resolvedTitle) {
+			return ""
+		}
+
+		const customerTitle = getCustomerDisplayTitle(customer)
+		if (customerTitle && resolvedTitle === customerTitle) {
+			return ""
+		}
+
+		return resolvedTitle
+	}
+
 	function normalizeServerDraft(draft) {
 		const invoice = draft?.doc || draft
+		const customer = invoice.customer
+			? {
+				name: invoice.customer,
+				customer_name: invoice.customer_name || invoice.customer,
+			}
+			: null
+
 		return {
 			...invoice,
 			draft_id: invoice.name,
@@ -107,12 +147,8 @@ export const usePOSDraftsStore = defineStore("posDrafts", () => {
 			server_backed: true,
 			created_at: invoice.creation || invoice.posting_date || invoice.modified,
 			updated_at: invoice.modified,
-			customer: invoice.customer
-				? {
-					name: invoice.customer,
-					customer_name: invoice.customer_name || invoice.customer,
-				}
-				: null,
+			customer,
+			invoice_title: extractCustomInvoiceTitle(invoice.title, customer),
 			items: (invoice.items || []).map(normalizeDraftItem),
 		}
 	}
@@ -159,6 +195,7 @@ export const usePOSDraftsStore = defineStore("posDrafts", () => {
 	async function saveDraftInvoice(
 		invoiceItems,
 		customer,
+		invoiceTitle = "",
 		posProfile,
 		appliedOffers = [],
 		draftId = null,
@@ -174,6 +211,7 @@ export const usePOSDraftsStore = defineStore("posDrafts", () => {
 				const draftData = {
 					pos_profile: posProfile,
 					customer: customer,
+					invoice_title: invoiceTitle,
 					items: invoiceItems,
 					applied_offers: appliedOffers, // Save applied offers
 				}
@@ -188,6 +226,7 @@ export const usePOSDraftsStore = defineStore("posDrafts", () => {
 					pos_profile: posProfile,
 					posa_pos_opening_shift: shiftStore.currentShift?.name || null,
 					customer: customer?.name || customer,
+					title: resolveDraftDocumentTitle(invoiceTitle, customer),
 					items: formatDraftItemsForSubmission(invoiceItems),
 					is_pos: 1,
 					update_stock: 1,
@@ -222,6 +261,9 @@ export const usePOSDraftsStore = defineStore("posDrafts", () => {
 			return {
 				items: (draft.items || []).map(normalizeDraftItem),
 				customer: draft.customer,
+				invoice_title:
+					draft.invoice_title ||
+					extractCustomInvoiceTitle(draft.title, draft.customer),
 				applied_offers: draft.applied_offers || [], // Restore applied offers
 			}
 		} catch (error) {
