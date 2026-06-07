@@ -171,7 +171,7 @@
 								class="absolute inset-y-0 start-0 ps-3 flex items-center pointer-events-none"
 							>
 								<svg
-									v-if="customersLoaded"
+									v-if="!customersLoading"
 									class="w-4 h-4 text-gray-400"
 									fill="none"
 									stroke="currentColor"
@@ -201,7 +201,7 @@
 								type="text"
 								:placeholder="__('Search or add customer...')"
 								class="w-full h-10 ps-9 pe-3 text-xs border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm transition-shadow"
-								:disabled="!customersLoaded"
+								:disabled="customersLoading"
 								@keydown="handleKeydown"
 								autocomplete="off"
 								:aria-label="__('Search customer in cart')"
@@ -1366,6 +1366,7 @@ const customerSearchFocused = ref(false); // Track if search input is focused
 // Use Pinia store for allCustomers (shared with CustomerDialog, synced on customer creation)
 const allCustomers = computed(() => customerSearchStore.allCustomers);
 const customersLoaded = computed(() => customerSearchStore.allCustomers.length > 0);
+const customersLoading = computed(() => customerSearchStore.loading && !customersLoaded.value);
 const selectedIndex = ref(-1); // Keyboard navigation index for search results
 const availableGiftCards = ref([]); // Available gift cards for current customer
 const previousCustomer = ref(null); // Store previous customer for restore on blur

@@ -168,6 +168,26 @@
 						<span>{{ __("Payments & Expenses") }}</span>
 					</button>
 					<button
+						v-if="canAccessShiftActions && canCreateStockCorrection"
+						@click="openStockCorrection"
+						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-cyan-50 flex items-center gap-3 transition-colors"
+					>
+						<svg
+							class="w-5 h-5 text-cyan-600"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M3 7h18M5 7v10a2 2 0 002 2h10a2 2 0 002-2V7M8 11h8m-4-4v8"
+							/>
+						</svg>
+						<span>{{ __("Stock Correction") }}</span>
+					</button>
+					<button
 						v-if="canAccessShiftActions && canSwitchToDesk"
 						@click="switchToDesk"
 						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 flex items-center gap-3 transition-colors"
@@ -538,6 +558,13 @@
 				:write-off-cost-center="shiftStore.writeOffCostCenter"
 				:write-off-limit="shiftStore.writeOffLimit"
 				@saved="handleCashMovementSaved"
+			/>
+
+			<!-- Stock Correction Dialog -->
+			<StockCorrectionDialog
+				v-model="showStockCorrectionDialog"
+				:pos-profile="shiftStore.profileName"
+				@saved="handleStockCorrectionSaved"
 			/>
 
 			<!-- Customer Selection Dialog -->
@@ -1059,6 +1086,7 @@ import POSSettings from "@/components/settings/POSSettings.vue";
 import InvoiceManagement from "@/components/invoices/InvoiceManagement.vue";
 import InvoiceDetailDialog from "@/components/invoices/InvoiceDetailDialog.vue";
 import CashMovementDialog from "@/components/common/CashMovementDialog.vue";
+import StockCorrectionDialog from "@/components/common/StockCorrectionDialog.vue";
 import { useRealtimeStock } from "@/composables/useRealtimeStock";
 import { useSessionLock } from "@/composables/useSessionLock";
 import { usePOSEvents } from "@/composables/usePOSEvents";
@@ -1226,6 +1254,9 @@ const showInvoiceManagement = ref(false);
 const showInvoiceDetail = ref(false);
 const selectedInvoiceForView = ref(null);
 
+// Stock correction dialog
+const showStockCorrectionDialog = ref(false);
+
 // Invoice history data (used by InvoiceManagement component)
 const invoiceHistoryData = ref([]);
 
@@ -1288,6 +1319,11 @@ const canAccessShiftActions = computed(() => shiftStore.hasOpenShift);
 
 /** Desk link only for users with the Nexus POS Manager role (from bootstrap API). */
 const canSwitchToDesk = computed(() => Boolean(bootstrapStore.data?.can_switch_to_desk));
+
+/** Stock correction entry point only for users with the POSNext Stock Corrector role. */
+const canCreateStockCorrection = computed(() =>
+	Boolean(bootstrapStore.data?.can_create_stock_correction)
+);
 
 // Resize state
 let resizeState = null;
@@ -2472,6 +2508,18 @@ function switchToDesk() {
 	}
 
 	window.location.assign("/app");
+}
+
+function openStockCorrection() {
+	if (!canAccessShiftActions.value || !canCreateStockCorrection.value) {
+		return;
+	}
+
+	showStockCorrectionDialog.value = true;
+}
+
+async function handleStockCorrectionSaved() {
+	await stockStore.refresh(null, shiftStore.profileWarehouse);
 }
 
 function formatCurrency(amount) {

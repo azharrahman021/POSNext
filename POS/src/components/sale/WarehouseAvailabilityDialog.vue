@@ -114,7 +114,7 @@
 									'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
 									(item.actual_qty || 0) > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
 								]">
-									{{ Math.floor(item.actual_qty || 0) }} {{ item.stock_uom || __('Nos') }}
+									{{ formatStockQuantity(item.actual_qty || 0) }} {{ item.stock_uom || __('Nos') }}
 								</span>
 								<!-- Price if available -->
 								<span v-if="item.rate" class="text-xs text-gray-500">
@@ -371,7 +371,7 @@
 												'text-base font-bold',
 												warehouse.available_qty > 0 ? 'text-green-600' : 'text-red-500'
 											]">
-												{{ Math.floor(warehouse.available_qty) }} {{ getVariantUom(warehouse.item_code) }}
+										{{ formatStockQuantity(warehouse.available_qty) }} {{ getVariantUom(warehouse.item_code) }}
 											</div>
 											<div class="text-xs text-gray-500 mt-0.5">
 												<span v-if="warehouse.reserved_qty > 0" class="text-orange-600">
@@ -386,7 +386,7 @@
 									<div v-if="warehouse.actual_qty !== warehouse.available_qty" class="mt-2 pt-2 border-t border-gray-100">
 										<div class="flex items-center justify-between text-xs text-gray-600">
 											<span class="text-start">{{ __('Actual Stock') }}</span>
-											<span class="font-medium text-end">{{ Math.floor(warehouse.actual_qty) }} {{ getVariantUom(warehouse.item_code) }}</span>
+										<span class="font-medium text-end">{{ formatStockQuantity(warehouse.actual_qty) }} {{ getVariantUom(warehouse.item_code) }}</span>
 										</div>
 									</div>
 								</div>
@@ -414,11 +414,11 @@
 										'text-lg font-bold',
 										warehouse.available_qty > 0 ? 'text-green-600' : 'text-red-500'
 									]">
-										{{ Math.floor(warehouse.available_qty) }} {{ warehouse.item_code ? getVariantUom(warehouse.item_code) : displayUom }}
+										{{ formatStockQuantity(warehouse.available_qty) }} {{ warehouse.item_code ? getVariantUom(warehouse.item_code) : displayUom }}
 									</div>
 									<!-- Converted quantity in barcode UOM if different -->
 									<div v-if="selectedBarcodeUom && convertToBarcodeUom(warehouse.available_qty) !== null" class="text-sm text-blue-600 font-medium">
-										≈ {{ Math.floor(convertToBarcodeUom(warehouse.available_qty) * 100) / 100 }} {{ selectedBarcodeUom }}
+										≈ {{ formatStockQuantity(convertToBarcodeUom(warehouse.available_qty)) }} {{ selectedBarcodeUom }}
 									</div>
 									<div class="text-xs text-gray-500 mt-0.5">
 										<span v-if="warehouse.reserved_qty > 0" class="text-orange-600">
@@ -432,7 +432,7 @@
 							<div v-if="warehouse.actual_qty !== warehouse.available_qty" class="mt-2 pt-2 border-t border-gray-200">
 								<div class="flex items-center justify-between text-xs text-gray-600">
 									<span class="text-start">{{ __('Actual Stock') }}</span>
-									<span class="font-medium text-end">{{ Math.floor(warehouse.actual_qty) }} {{ warehouse.item_code ? getVariantUom(warehouse.item_code) : displayUom }}</span>
+									<span class="font-medium text-end">{{ formatStockQuantity(warehouse.actual_qty) }} {{ warehouse.item_code ? getVariantUom(warehouse.item_code) : displayUom }}</span>
 								</div>
 							</div>
 						</div>
@@ -470,7 +470,7 @@
 						</div>
 						<!-- Converted total in barcode UOM if different -->
 						<div v-if="selectedBarcodeUom && convertToBarcodeUom(totalAvailable) !== null" class="text-blue-600 font-medium mt-1">
-							≈ {{ Math.floor(convertToBarcodeUom(totalAvailable) * 100) / 100 }} {{ selectedBarcodeUom }}
+							≈ {{ formatStockQuantity(convertToBarcodeUom(totalAvailable)) }} {{ selectedBarcodeUom }}
 						</div>
 					</div>
 					<button
@@ -537,6 +537,12 @@ const show = computed({
 function closeDialog() {
 	emit('update:modelValue', false)
 	emit('close')
+}
+
+function formatStockQuantity(quantity) {
+	const num = Number.parseFloat(quantity || 0)
+	if (!Number.isFinite(num)) return "0"
+	return Number.isInteger(num) ? `${num}` : num.toFixed(2)
 }
 
 // Determine if we're in search mode

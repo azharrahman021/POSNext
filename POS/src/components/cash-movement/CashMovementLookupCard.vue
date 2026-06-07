@@ -46,16 +46,12 @@
 				class="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-3"
 			>
 				<div class="text-xs font-semibold uppercase tracking-wide text-blue-600">
-					{{ __('Balance Snapshot') }}
+					{{ __('GL Balance') }}
 				</div>
 				<div class="mt-2 space-y-2 text-sm">
 					<div class="flex items-center justify-between gap-4">
 						<span class="text-blue-700">{{ __('Current Company') }}</span>
 						<span class="font-semibold text-blue-900">{{ formatCurrency(partyBalanceSummary.company_balance || 0) }}</span>
-					</div>
-					<div class="flex items-center justify-between gap-4">
-						<span class="text-blue-700">{{ __('All Companies') }}</span>
-						<span class="font-semibold text-blue-900">{{ formatCurrency(partyBalanceSummary.all_company_balance || 0) }}</span>
 					</div>
 				</div>
 			</div>

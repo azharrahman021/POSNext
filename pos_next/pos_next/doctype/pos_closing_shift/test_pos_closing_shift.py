@@ -18,15 +18,36 @@ class TestPOSClosingShift(unittest.TestCase):
 		mock_frappe.throw.side_effect = RuntimeError("blocked")
 
 		with patch("pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift.frappe", new=mock_frappe):
-			with self.assertRaises(RuntimeError):
-				POSClosingShift.ensure_no_draft_invoices(
-					SimpleNamespace(
-						pos_profile="POS Profile - Test",
-						pos_opening_shift="POS-OS-0001",
+			with patch("pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift._", side_effect=lambda text, *args, **kwargs: text):
+				with self.assertRaises(RuntimeError):
+					POSClosingShift.ensure_no_draft_invoices(
+						SimpleNamespace(
+							pos_profile="POS Profile - Test",
+							pos_opening_shift="POS-OS-0001",
+							user="cashier@example.com",
+						)
 					)
-				)
 
 		mock_frappe.throw.assert_called_once()
+
+	def test_ensure_no_draft_invoices_ignores_other_users_drafts(self):
+		mock_frappe = Mock()
+		mock_frappe.db.has_column.return_value = True
+		mock_frappe.get_all.side_effect = [[], []]
+		mock_frappe.throw.side_effect = RuntimeError("blocked")
+
+		with patch("pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift.frappe", new=mock_frappe):
+			POSClosingShift.ensure_no_draft_invoices(
+				SimpleNamespace(
+					pos_profile="POS Profile - Test",
+					pos_opening_shift="POS-OS-0001",
+					user="cashier@example.com",
+				)
+			)
+
+		first_call = mock_frappe.get_all.call_args_list[0]
+		self.assertEqual(first_call.kwargs["filters"]["owner"], "cashier@example.com")
+		self.assertEqual(len(mock_frappe.get_all.call_args_list), 2)
 
 	def test_on_submit_does_not_delete_drafts(self):
 		opening_entry = SimpleNamespace(pos_closing_shift=None, set_status=Mock(), save=Mock())

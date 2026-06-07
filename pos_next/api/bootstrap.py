@@ -11,6 +11,7 @@ the frontend fetches everything in one request.
 
 Data Returned:
     - can_switch_to_desk: True if user has role "Nexus POS Manager" (desk link in POS)
+    - can_create_stock_correction: True if user has role "POSNext Stock Corrector"
     - locale: User's language preference (e.g., "en", "ar")
     - precision: Number formatting settings from System Settings
         - currency: Decimal places for totals (default: 2)
@@ -48,6 +49,7 @@ def get_initial_data():
 			locale: str,
 			precision: dict,
 			can_switch_to_desk: bool,
+			can_create_stock_correction: bool,
 			shift: dict | None,
 			pos_profile: dict | None,
 			pos_settings: dict | None,
@@ -60,12 +62,15 @@ def get_initial_data():
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Authentication required"), frappe.AuthenticationError)
 
+	roles = frappe.get_roles()
+
 	result = {
 		"success": True,
 		"site_name": frappe.local.site,
 		"locale": _get_user_language(),
 		"precision": _get_precision_settings(),
-		"can_switch_to_desk": "Nexus POS Manager" in frappe.get_roles(),
+		"can_switch_to_desk": "Nexus POS Manager" in roles,
+		"can_create_stock_correction": "POSNext Stock Corrector" in roles,
 		"shift": None,
 		"pos_profile": None,
 		"pos_settings": None,

@@ -8,10 +8,12 @@ from pos_next.api.invoices import cleanup_old_drafts, get_draft_invoices, update
 
 
 class TestInvoicesAPI(unittest.TestCase):
-    def test_get_draft_invoices_filters_to_logged_in_user(self):
+    def test_get_draft_invoices_filters_to_pos_profile_company(self):
         with patch("pos_next.api.invoices.frappe") as mock_frappe:
             mock_frappe.session.user = "cashier@example.com"
             mock_frappe.db.has_column.return_value = True
+            mock_frappe.db.exists.return_value = True
+            mock_frappe.db.get_value.return_value = "Test Company"
             mock_frappe.get_all.return_value = [{"name": "SINV-0001"}]
             mock_frappe.get_cached_doc.return_value = Mock(name="SINV-0001")
 
@@ -23,8 +25,10 @@ class TestInvoicesAPI(unittest.TestCase):
         mock_frappe.get_all.assert_called_once()
         filters = mock_frappe.get_all.call_args.kwargs["filters"]
         self.assertEqual(filters["docstatus"], 0)
-        self.assertEqual(filters["owner"], "cashier@example.com")
-        self.assertEqual(filters["posa_pos_opening_shift"], "POS-OS-0001")
+        self.assertEqual(filters["company"], "Test Company")
+        self.assertNotIn("owner", filters)
+        self.assertNotIn("posa_pos_opening_shift", filters)
+        self.assertNotIn("is_pos", filters)
         self.assertEqual(len(result), 1)
 
     def test_cleanup_old_drafts_is_non_destructive(self):

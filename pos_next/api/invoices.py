@@ -1763,8 +1763,20 @@ def render_draft_invoice_print(
     if no_letterhead is None:
         no_letterhead = 0 if selected_letterhead else 1
 
-    document = frappe.get_doc(data)
-    document.docstatus = 0
+    invoice_name = data.get("name")
+    document = None
+    if invoice_name and frappe.db.exists(DOCTYPE_SALES_INVOICE, invoice_name):
+        existing_document = frappe.get_doc(DOCTYPE_SALES_INVOICE, invoice_name)
+        if cint(existing_document.docstatus) != 0:
+            frappe.throw(_("Only draft Sales Invoices can be printed from this action"))
+        if existing_document.get("pos_profile") != pos_profile:
+            frappe.throw(_("Draft invoice does not belong to the selected POS Profile"))
+        document = existing_document
+
+    if not document:
+        document = frappe.get_doc(data)
+        document.docstatus = 0
+
     document.flags.ignore_permissions = True
 
     print_format_doc = get_print_format_doc(selected_print_format, meta=document.meta)
@@ -1796,22 +1808,32 @@ def render_draft_invoice_print(
 
 @frappe.whitelist()
 def get_draft_invoices(pos_opening_shift=None, pos_profile=None, doctype="Sales Invoice"):
-    """Get current user's draft invoices for a POS opening shift or POS Profile."""
+    """Get company-level draft invoices for the selected POS Profile."""
     if doctype != "Sales Invoice":
         frappe.throw(_("Only Sales Invoice drafts can be loaded from POS"))
 
     filters = {
         "docstatus": 0,
-        "owner": frappe.session.user,
     }
 
-    if pos_opening_shift:
+    if pos_profile:
+        has_access = frappe.db.exists(
+            "POS Profile User",
+            {"parent": pos_profile, "user": frappe.session.user},
+        )
+        if not has_access:
+            frappe.throw(_("You don't have access to this POS Profile"))
+
+        company = frappe.db.get_value(DOCTYPE_POS_PROFILE, pos_profile, "company")
+        if company and frappe.db.has_column(doctype, "company"):
+            filters["company"] = company
+        elif frappe.db.has_column(doctype, "pos_profile"):
+            filters["pos_profile"] = pos_profile
+    elif pos_opening_shift:
         if frappe.db.has_column(doctype, "posa_pos_opening_shift"):
             filters["posa_pos_opening_shift"] = pos_opening_shift
         elif frappe.db.has_column(doctype, "pos_opening_shift"):
             filters["pos_opening_shift"] = pos_opening_shift
-    elif pos_profile and frappe.db.has_column(doctype, "pos_profile"):
-        filters["pos_profile"] = pos_profile
 
     # Performance: Get all invoice names first
     invoices_list = frappe.get_all(

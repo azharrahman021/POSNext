@@ -67,7 +67,7 @@
 							<div class="text-end">
 								<p class="text-sm font-bold text-blue-600">{{ formatCurrency(matchedVariant.rate || 0) }}</p>
 								<p class="text-xs" :class="(matchedVariant.stock ?? matchedVariant.data?.actual_qty ?? 0) > 0 ? 'text-green-600' : 'text-red-600'">
-									 {{ __('Stock: {0}', [(matchedVariant.stock ?? matchedVariant.data?.actual_qty ?? 0)]) }}
+									 {{ __('Stock: {0}', [formatStockQuantity(matchedVariant.stock ?? matchedVariant.data?.actual_qty ?? 0)]) }}
 								</p>
 							</div>
 						</div>
@@ -258,6 +258,12 @@ const props = defineProps({
 })
 
 const emit = defineEmits(["update:modelValue", "option-selected"])
+
+function formatStockQuantity(quantity) {
+	const num = Number.parseFloat(quantity || 0)
+	if (!Number.isFinite(num)) return "0"
+	return Number.isInteger(num) ? `${num}` : num.toFixed(2)
+}
 
 const isOpen = computed({
 	get: () => props.modelValue,

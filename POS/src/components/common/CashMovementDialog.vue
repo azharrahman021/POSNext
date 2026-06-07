@@ -222,12 +222,8 @@ const partyCompanyBalance = computed(() => {
 	return Number(partyBalanceSummary.value?.company_balance || 0)
 })
 
-const partyAllCompanyBalance = computed(() => {
-	return Number(partyBalanceSummary.value?.all_company_balance || 0)
-})
-
 const partyOutstanding = computed(() => {
-	return Math.max(Math.abs(partyCompanyBalance.value), Math.abs(partyAllCompanyBalance.value))
+	return Math.abs(partyCompanyBalance.value)
 })
 
 const writeOffAmount = computed(() => {

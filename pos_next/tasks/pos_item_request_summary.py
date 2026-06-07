@@ -47,6 +47,7 @@ def _get_requests(before_ts):
 		],
 		filters=[
 			["creation", "<", before_ts],
+			["status", "in", ("new", "ordered")],
 		],
 		order_by="creation asc",
 	)

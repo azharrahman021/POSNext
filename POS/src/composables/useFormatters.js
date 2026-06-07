@@ -28,6 +28,19 @@ function formatQuantity(quantity) {
 }
 
 /**
+ * Format stock quantities for POS display.
+ * Whole numbers stay whole; fractional stock shows 2 decimals.
+ * @param {number} quantity - The quantity to format
+ * @returns {string} Formatted stock quantity
+ */
+function formatStockQuantity(quantity) {
+	if (quantity === null || quantity === undefined) return "0"
+	const num = Number.parseFloat(quantity)
+	if (isNaN(num)) return "0"
+	return Number.isInteger(num) ? `${num}` : num.toFixed(2)
+}
+
+/**
  * Format date and time
  * @param {string|Date} datetime - The datetime to format
  * @returns {string} Formatted date and time string
@@ -95,6 +108,7 @@ export function useFormatters() {
 	return {
 		formatCurrency,
 		formatQuantity,
+		formatStockQuantity,
 		formatDateTime,
 		formatTime,
 		formatDate,

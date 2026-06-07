@@ -72,6 +72,7 @@ class POSClosingShift(Document):
         """Block shift closing while draft invoices still exist."""
         draft_names = set()
         doctype = "Sales Invoice"
+        owner = self.user
 
         if frappe.db.has_column(doctype, "pos_profile") and self.pos_profile:
             draft_names.update(
@@ -81,6 +82,7 @@ class POSClosingShift(Document):
                         "docstatus": 0,
                         "is_pos": 1,
                         "pos_profile": self.pos_profile,
+                        "owner": owner,
                     },
                     pluck="name",
                 )
@@ -94,6 +96,7 @@ class POSClosingShift(Document):
                         "docstatus": 0,
                         "is_pos": 1,
                         "posa_pos_opening_shift": self.pos_opening_shift,
+                        "owner": owner,
                     },
                     pluck="name",
                 )

@@ -222,7 +222,13 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 
 			// Step 2: If online, fetch delta from server
 			if (!isOffline()) {
-				const lastSync = forceReload ? null : localStorage.getItem(CUSTOMERS_SYNC_KEY)
+				// If IndexedDB is empty, a delta sync cannot rebuild the in-memory list.
+				// Fall back to a full fetch so clearing the default customer still opens search.
+				const hasCachedCustomers = allCustomers.value.length > 0
+				const lastSync =
+					forceReload || !hasCachedCustomers
+						? null
+						: localStorage.getItem(CUSTOMERS_SYNC_KEY)
 
 				const response = await call("pos_next.api.customers.get_customers", {
 					pos_profile: posProfile,
